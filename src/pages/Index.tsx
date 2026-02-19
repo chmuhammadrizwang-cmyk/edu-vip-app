@@ -8,8 +8,17 @@ const Index = () => {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) navigate("/settings");
-      else navigate("/auth");
+      if (user) {
+        const savedClass = localStorage.getItem("edu_selected_class");
+        const savedTime = localStorage.getItem("edu_study_time");
+        if (savedClass && savedTime) {
+          navigate("/chat");
+        } else {
+          navigate("/settings");
+        }
+      } else {
+        navigate("/auth");
+      }
     });
     return unsub;
   }, [navigate]);

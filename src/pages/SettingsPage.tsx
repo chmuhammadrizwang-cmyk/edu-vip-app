@@ -12,9 +12,9 @@ const durations = ["15 min", "30 min", "45 min", "1 hour", "1.5 hours", "2 hours
 
 const SettingsPage = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [selectedClass, setSelectedClass] = useState("");
-  const [studyTime, setStudyTime] = useState("");
-  const [studyDuration, setStudyDuration] = useState("");
+  const [selectedClass, setSelectedClass] = useState(() => localStorage.getItem("edu_selected_class") || "");
+  const [studyTime, setStudyTime] = useState(() => localStorage.getItem("edu_study_time") || "");
+  const [studyDuration, setStudyDuration] = useState(() => localStorage.getItem("edu_study_duration") || "");
   const [alarmSet, setAlarmSet] = useState(false);
   const navigate = useNavigate();
 
@@ -203,7 +203,12 @@ const SettingsPage = () => {
           </button>
 
           <button
-            onClick={() => navigate("/chat")}
+            onClick={() => {
+              if (selectedClass) localStorage.setItem("edu_selected_class", selectedClass);
+              if (studyTime) localStorage.setItem("edu_study_time", studyTime);
+              if (studyDuration) localStorage.setItem("edu_study_duration", studyDuration);
+              navigate("/chat");
+            }}
             className="w-full py-4 rounded-xl bg-gradient-secondary text-secondary-foreground font-semibold text-lg glow-cyan hover:opacity-90 transition-opacity"
           >
             Start Studying →

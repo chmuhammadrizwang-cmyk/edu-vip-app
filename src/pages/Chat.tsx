@@ -44,7 +44,17 @@ const Chat = () => {
     speechSynthesis.cancel();
     const clean = cleanMarkdown(text);
     const u = new SpeechSynthesisUtterance(clean);
-    u.rate = 0.95;
+    u.rate = 0.9;
+    u.pitch = 1.0;
+    // Pick a high-quality voice
+    const voices = speechSynthesis.getVoices();
+    const preferred = voices.find(v =>
+      v.name.includes("Google UK English Female") ||
+      v.name.includes("Google Hindi") ||
+      v.name.includes("Google US English")
+    ) || voices.find(v => v.lang.startsWith("en") && v.name.includes("Female"))
+      || voices.find(v => v.lang.startsWith("en"));
+    if (preferred) u.voice = preferred;
     speechSynthesis.speak(u);
   };
 

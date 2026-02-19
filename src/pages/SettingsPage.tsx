@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import BrandingFooter from "@/components/BrandingFooter";
 import AppHeader from "@/components/AppHeader";
 import AppSidebar from "@/components/AppSidebar";
-import { BookOpen, Clock, Bell } from "lucide-react";
+import { BookOpen, Clock, Bell, FlaskConical } from "lucide-react";
 
 const classes = ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7", "Class 8", "Class 9", "Class 10", "Class 11", "Class 12"];
 const durations = ["15 min", "30 min", "45 min", "1 hour", "1.5 hours", "2 hours"];
@@ -18,10 +18,71 @@ const SettingsPage = () => {
   const [alarmSet, setAlarmSet] = useState(false);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/alarm-sw.js").catch(() => {});
+    }
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  const triggerAlarm = (durationMs: number) => {
+    // Notification
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification("📚 Study Time!", { body: "It's time to study!", icon: "/favicon.ico" });
+    }
+
+    // Voice
+    const utterance = new SpeechSynthesisUtterance("Study Time! It's time to study!");
+    utterance.rate = 0.9;
+    utterance.pitch = 1.1;
+    utterance.volume = 1;
+    speechSynthesis.speak(utterance);
+
+    // Beep sound
+    const beep = playBeep();
+
+    // Repeat every 30 seconds
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        clearInterval(interval);
+        speechSynthesis.cancel();
+        return;
+      }
+      const u = new SpeechSynthesisUtterance("Study Time!");
+      speechSynthesis.speak(u);
+      playBeep();
+    }, 30000);
+
+    // Stop after duration
+    if (durationMs > 0) {
+      setTimeout(() => { clearInterval(interval); speechSynthesis.cancel(); }, durationMs);
+    }
+  };
+
+  const playBeep = () => {
+    try {
+      const ctx = new AudioContext();
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.frequency.value = 880;
+      oscillator.type = "square";
+      gain.gain.value = 0.5;
+      oscillator.start();
+      setTimeout(() => { oscillator.stop(); ctx.close(); }, 1000);
+    } catch {}
+  };
+
   const handleSetAlarm = () => {
     if (!studyTime) { toast.error("Please select a study time"); return; }
 
-    // Use Web Speech API for voice alarm
+    if ("Notification" in window && Notification.permission !== "granted") {
+      Notification.requestPermission();
+    }
+
     const [hours, minutes] = studyTime.split(":").map(Number);
     const now = new Date();
     const alarm = new Date();
@@ -29,33 +90,30 @@ const SettingsPage = () => {
     if (alarm <= now) alarm.setDate(alarm.getDate() + 1);
 
     const diff = alarm.getTime() - now.getTime();
+    const durationMs = parseDuration(studyDuration);
 
-    setTimeout(() => {
-      const utterance = new SpeechSynthesisUtterance("Study Time! It's time to study!");
-      utterance.rate = 0.9;
-      utterance.pitch = 1.1;
-      utterance.volume = 1;
-      speechSynthesis.speak(utterance);
-      // Repeat every 30 seconds
-      const interval = setInterval(() => {
-        if (document.visibilityState === "visible") {
-          clearInterval(interval);
-          speechSynthesis.cancel();
-          return;
-        }
-        const u = new SpeechSynthesisUtterance("Study Time!");
-        speechSynthesis.speak(u);
-      }, 30000);
+    // Use service worker timer for background reliability
+    if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: "SET_ALARM",
+        delay: diff,
+        duration: durationMs,
+      });
+    }
 
-      // Stop after selected duration
-      const durationMs = parseDuration(studyDuration);
-      if (durationMs > 0) {
-        setTimeout(() => { clearInterval(interval); speechSynthesis.cancel(); }, durationMs);
-      }
-    }, diff);
+    // Also set a local timeout as fallback
+    setTimeout(() => triggerAlarm(durationMs), diff);
 
     setAlarmSet(true);
     toast.success(`Alarm set for ${studyTime}!`);
+  };
+
+  const handleTestAlarm = () => {
+    if ("Notification" in window && Notification.permission !== "granted") {
+      Notification.requestPermission();
+    }
+    toast.info("Alarm will trigger in 5 seconds — minimize the app now!");
+    setTimeout(() => triggerAlarm(10000), 5000);
   };
 
   const parseDuration = (d: string): number => {
@@ -133,6 +191,15 @@ const SettingsPage = () => {
           >
             <Bell className="h-5 w-5" />
             {alarmSet ? "Alarm Set ✓" : "Set Voice Alarm"}
+          </button>
+
+          {/* Test Alarm */}
+          <button
+            onClick={handleTestAlarm}
+            className="w-full py-3 rounded-xl bg-muted/50 border border-border text-foreground font-medium text-sm hover:bg-muted transition-all flex items-center justify-center gap-2"
+          >
+            <FlaskConical className="h-4 w-4 text-accent" />
+            Test 5-Second Alarm
           </button>
 
           <button

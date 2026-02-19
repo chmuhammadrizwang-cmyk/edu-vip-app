@@ -24,9 +24,26 @@ const Chat = () => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const cleanMarkdown = (text: string): string => {
+    return text
+      .replace(/#{1,6}\s?/g, "")
+      .replace(/\*{1,3}(.*?)\*{1,3}/g, "$1")
+      .replace(/_{1,3}(.*?)_{1,3}/g, "$1")
+      .replace(/`{1,3}[^`]*`{1,3}/g, "")
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/^[-*+]\s/gm, "")
+      .replace(/^\d+\.\s/gm, "")
+      .replace(/^>\s?/gm, "")
+      .replace(/---+/g, "")
+      .replace(/\n{2,}/g, ". ")
+      .replace(/\n/g, " ")
+      .trim();
+  };
+
   const speakText = (text: string) => {
     speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
+    const clean = cleanMarkdown(text);
+    const u = new SpeechSynthesisUtterance(clean);
     u.rate = 0.95;
     speechSynthesis.speak(u);
   };

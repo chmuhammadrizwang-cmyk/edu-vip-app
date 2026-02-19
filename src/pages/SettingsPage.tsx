@@ -6,6 +6,7 @@ import BrandingFooter from "@/components/BrandingFooter";
 import AppHeader from "@/components/AppHeader";
 import AppSidebar from "@/components/AppSidebar";
 import { BookOpen, Clock, Bell, FlaskConical } from "lucide-react";
+import { requestFullscreen } from "@/hooks/useStudyLock";
 
 const classes = ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7", "Class 8", "Class 9", "Class 10", "Class 11", "Class 12"];
 const durations = ["15 min", "30 min", "45 min", "1 hour", "1.5 hours", "2 hours"];
@@ -113,6 +114,7 @@ const SettingsPage = () => {
     setTimeout(() => triggerAlarm(durationMs), diff);
 
     setAlarmSet(true);
+    requestFullscreen();
     toast.success(`Alarm set for ${studyTime}! Redirecting to Dashboard...`);
     setTimeout(() => navigate("/chat"), 1000);
   };
@@ -216,6 +218,7 @@ const SettingsPage = () => {
               if (selectedClass) localStorage.setItem("edu_selected_class", selectedClass);
               if (studyTime) localStorage.setItem("edu_study_time", studyTime);
               if (studyDuration) localStorage.setItem("edu_study_duration", studyDuration);
+              requestFullscreen();
               navigate("/chat");
             }}
             className="w-full py-4 rounded-xl bg-gradient-secondary text-secondary-foreground font-semibold text-lg glow-cyan hover:opacity-90 transition-opacity"

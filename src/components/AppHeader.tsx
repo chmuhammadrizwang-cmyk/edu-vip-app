@@ -1,5 +1,6 @@
 import { Menu, ArrowLeft } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { isStudyActive } from "@/hooks/useStudyLock";
 
 interface AppHeaderProps {
   onMenuClick: () => void;
@@ -9,7 +10,8 @@ interface AppHeaderProps {
 const AppHeader = ({ onMenuClick, title }: AppHeaderProps) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const showBack = location.pathname !== "/" && location.pathname !== "/auth";
+  const studyActive = isStudyActive();
+  const showBack = !studyActive && location.pathname !== "/" && location.pathname !== "/auth";
 
   return (
     <header className="sticky top-0 z-30 flex items-center gap-3 px-4 py-3 glass border-b border-border">

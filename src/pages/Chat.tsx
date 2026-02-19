@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import BrandingFooter from "@/components/BrandingFooter";
 import AppHeader from "@/components/AppHeader";
 import AppSidebar from "@/components/AppSidebar";
+import { useStudyMonitor } from "@/hooks/useStudyMonitor";
 import { Send, Mic, MicOff, Volume2 } from "lucide-react";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -13,6 +14,7 @@ const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
 const Chat = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  useStudyMonitor();
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);

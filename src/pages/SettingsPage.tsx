@@ -92,6 +92,14 @@ const SettingsPage = () => {
     const diff = alarm.getTime() - now.getTime();
     const durationMs = parseDuration(studyDuration);
 
+    // Save study session info to localStorage
+    if (selectedClass) localStorage.setItem("edu_selected_class", selectedClass);
+    if (studyTime) localStorage.setItem("edu_study_time", studyTime);
+    if (studyDuration) localStorage.setItem("edu_study_duration", studyDuration);
+    // Save active study session with end time
+    const endTime = Date.now() + diff + durationMs;
+    localStorage.setItem("edu_study_session_end", String(endTime));
+
     // Use service worker timer for background reliability
     if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
       navigator.serviceWorker.controller.postMessage({
@@ -105,7 +113,8 @@ const SettingsPage = () => {
     setTimeout(() => triggerAlarm(durationMs), diff);
 
     setAlarmSet(true);
-    toast.success(`Alarm set for ${studyTime}!`);
+    toast.success(`Alarm set for ${studyTime}! Redirecting to Dashboard...`);
+    setTimeout(() => navigate("/chat"), 1000);
   };
 
   const handleTestAlarm = () => {

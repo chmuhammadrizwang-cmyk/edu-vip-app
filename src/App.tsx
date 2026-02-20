@@ -8,6 +8,7 @@ import Auth from "./pages/Auth";
 import SettingsPage from "./pages/SettingsPage";
 import Chat from "./pages/Chat";
 import PuzzleGame from "./pages/PuzzleGame";
+import Incidents from "./pages/Incidents";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,6 +25,7 @@ const App = () => (
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/chat" element={<Chat />} />
           <Route path="/puzzle" element={<PuzzleGame />} />
+          <Route path="/incidents" element={<Incidents />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

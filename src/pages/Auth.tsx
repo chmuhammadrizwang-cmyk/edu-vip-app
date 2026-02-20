@@ -32,6 +32,7 @@ const Auth = () => {
           mobile,
           createdAt: new Date().toISOString(),
         });
+        localStorage.setItem("study_guard_name", name);
         toast.success("Account created!");
       }
       navigate("/settings");
@@ -60,10 +61,10 @@ const Auth = () => {
             <GraduationCap className="h-8 w-8 text-primary-foreground" />
           </div>
           <h1 className="text-3xl font-display font-bold text-gradient-primary mb-2">
-            {isLogin ? "Welcome Back" : "Join EduApp"}
+            {isLogin ? "Welcome Back" : "Join Study Guard"}
           </h1>
           <p className="text-muted-foreground">
-            {isLogin ? "Sign in to continue learning" : "Start your learning journey"}
+            {isLogin ? "Sign in to continue learning" : "Your AI Moral Guardian"}
           </p>
         </div>
 

@@ -16,14 +16,17 @@ export const useStudyMonitor = () => {
       const endTime = Number(endTimeStr);
       const now = Date.now();
 
-      // Only monitor if study session is active
       if (now >= endTime) {
         localStorage.removeItem("edu_study_session_end");
         return;
       }
 
       if (document.hidden) {
-        // User left — start warning loop
+        // Log incident
+        const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
+        incidents.push({ type: "tab_switch", timestamp: new Date().toISOString() });
+        localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
+
         warnUser();
         intervalRef.current = setInterval(() => {
           const currentEnd = Number(localStorage.getItem("edu_study_session_end") || "0");
@@ -40,9 +43,9 @@ export const useStudyMonitor = () => {
     };
 
     const warnUser = () => {
-      // Voice warning
+      const userName = localStorage.getItem("study_guard_name") || "Student";
       speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance("Wapas ao! Study time khatam nahi hua!");
+      const u = new SpeechSynthesisUtterance(`${userName}, stop wasting time! This is Study Guard. Go back to your studies immediately!`);
       u.rate = 0.9;
       u.pitch = 1.1;
       u.volume = 1;
@@ -71,8 +74,9 @@ export const useStudyMonitor = () => {
 
       // Web notification
       if ("Notification" in window && Notification.permission === "granted") {
-        new Notification("📚 Wapas ao!", {
-          body: "Study time khatam nahi hua! App pe wapas aao!",
+        const userName = localStorage.getItem("study_guard_name") || "Student";
+        new Notification("🔒 Study Guard", {
+          body: `${userName}, stop wasting time! Go back to your studies!`,
           icon: "/favicon.ico",
           tag: "study-monitor",
         });

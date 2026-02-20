@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import BrandingFooter from "@/components/BrandingFooter";
 import AppHeader from "@/components/AppHeader";
 import AppSidebar from "@/components/AppSidebar";
-import { BookOpen, Clock, Bell, FlaskConical } from "lucide-react";
+import { BookOpen, Clock, Bell, FlaskConical, Lock } from "lucide-react";
 import { requestFullscreen } from "@/hooks/useStudyLock";
 
 const classes = ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7", "Class 8", "Class 9", "Class 10", "Class 11", "Class 12"];
@@ -17,6 +17,10 @@ const SettingsPage = () => {
   const [studyTime, setStudyTime] = useState(() => localStorage.getItem("edu_study_time") || "");
   const [studyDuration, setStudyDuration] = useState(() => localStorage.getItem("edu_study_duration") || "");
   const [alarmSet, setAlarmSet] = useState(false);
+  const [currentPin, setCurrentPin] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [pinError, setPinError] = useState("");
+  const [pinSuccess, setPinSuccess] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -29,22 +33,16 @@ const SettingsPage = () => {
   }, []);
 
   const triggerAlarm = (durationMs: number) => {
-    // Notification
     if ("Notification" in window && Notification.permission === "granted") {
       new Notification("📚 Study Time!", { body: "It's time to study!", icon: "/favicon.ico" });
     }
-
-    // Voice
     const utterance = new SpeechSynthesisUtterance("Study Time! It's time to study!");
     utterance.rate = 0.9;
     utterance.pitch = 1.1;
     utterance.volume = 1;
     speechSynthesis.speak(utterance);
+    playBeep();
 
-    // Beep sound
-    const beep = playBeep();
-
-    // Repeat every 30 seconds
     const interval = setInterval(() => {
       if (document.visibilityState === "visible") {
         clearInterval(interval);
@@ -56,7 +54,6 @@ const SettingsPage = () => {
       playBeep();
     }, 30000);
 
-    // Stop after duration
     if (durationMs > 0) {
       setTimeout(() => { clearInterval(interval); speechSynthesis.cancel(); }, durationMs);
     }
@@ -93,15 +90,12 @@ const SettingsPage = () => {
     const diff = alarm.getTime() - now.getTime();
     const durationMs = parseDuration(studyDuration);
 
-    // Save study session info to localStorage
     if (selectedClass) localStorage.setItem("edu_selected_class", selectedClass);
     if (studyTime) localStorage.setItem("edu_study_time", studyTime);
     if (studyDuration) localStorage.setItem("edu_study_duration", studyDuration);
-    // Save active study session with end time
     const endTime = Date.now() + diff + durationMs;
     localStorage.setItem("edu_study_session_end", String(endTime));
 
-    // Use service worker timer for background reliability
     if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
       navigator.serviceWorker.controller.postMessage({
         type: "SET_ALARM",
@@ -110,7 +104,6 @@ const SettingsPage = () => {
       });
     }
 
-    // Also set a local timeout as fallback
     setTimeout(() => triggerAlarm(durationMs), diff);
 
     setAlarmSet(true);
@@ -133,6 +126,26 @@ const SettingsPage = () => {
     if (d.includes("1 hour")) return 60 * 60000;
     const mins = parseInt(d);
     return isNaN(mins) ? 30 * 60000 : mins * 60000;
+  };
+
+  const handleChangePin = () => {
+    const storedPin = localStorage.getItem("study_guard_pin") || "0000";
+    setPinError("");
+    setPinSuccess(false);
+
+    if (currentPin !== storedPin) {
+      setPinError("Current PIN is incorrect");
+      return;
+    }
+    if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
+      setPinError("New PIN must be 4 digits");
+      return;
+    }
+    localStorage.setItem("study_guard_pin", newPin);
+    setCurrentPin("");
+    setNewPin("");
+    setPinSuccess(true);
+    toast.success("PIN updated successfully!");
   };
 
   return (
@@ -225,6 +238,43 @@ const SettingsPage = () => {
           >
             Start Studying →
           </button>
+
+          {/* PIN Management */}
+          <div className="glass rounded-2xl p-6 glow-primary">
+            <div className="flex items-center gap-3 mb-4">
+              <Lock className="h-6 w-6 text-primary" />
+              <h2 className="font-display text-lg font-semibold text-foreground">Change Parental PIN</h2>
+            </div>
+            <div className="space-y-3">
+              <input
+                type="password"
+                maxLength={4}
+                inputMode="numeric"
+                placeholder="Current PIN"
+                value={currentPin}
+                onChange={(e) => { setCurrentPin(e.target.value.replace(/\D/g, "")); setPinError(""); setPinSuccess(false); }}
+                className="w-full py-3 px-4 rounded-xl bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary transition-all text-center tracking-[0.5em]"
+              />
+              <input
+                type="password"
+                maxLength={4}
+                inputMode="numeric"
+                placeholder="New PIN"
+                value={newPin}
+                onChange={(e) => { setNewPin(e.target.value.replace(/\D/g, "")); setPinError(""); setPinSuccess(false); }}
+                className="w-full py-3 px-4 rounded-xl bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary transition-all text-center tracking-[0.5em]"
+              />
+              {pinError && <p className="text-destructive text-sm text-center">{pinError}</p>}
+              {pinSuccess && <p className="text-sm text-center" style={{ color: "hsl(145 95% 55%)" }}>PIN updated! ✓</p>}
+              <button
+                onClick={handleChangePin}
+                disabled={currentPin.length !== 4 || newPin.length !== 4}
+                className="w-full py-3 rounded-xl bg-gradient-primary text-primary-foreground font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
+              >
+                Update PIN
+              </button>
+            </div>
+          </div>
         </motion.div>
       </main>
 

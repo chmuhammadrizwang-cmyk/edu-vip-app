@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -10,7 +10,7 @@ import PinDialog from "@/components/PinDialog";
 import { useStudyMonitor } from "@/hooks/useStudyMonitor";
 import { useStudyLock, isStudyActive } from "@/hooks/useStudyLock";
 import { useFocusOverlay } from "@/hooks/useFocusOverlay";
-import { Send, Mic, MicOff, Volume2, Share2, Shield } from "lucide-react";
+import { Send, Mic, MicOff, Volume2, Share2, Shield, Clock } from "lucide-react";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -18,10 +18,43 @@ const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
 const Chat = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const studyActive = isStudyActive();
+  const [studyActive, setStudyActive] = useState(isStudyActive());
+  const [timerDone, setTimerDone] = useState(false);
+  const [remainingTime, setRemainingTime] = useState("");
   const showFocusOverlay = useFocusOverlay();
-  useStudyMonitor();
   useStudyLock();
+
+  const onTimerEnd = useCallback(() => {
+    setStudyActive(false);
+    setTimerDone(true);
+    setRemainingTime("");
+    toast.success("You are free now! 🎉");
+  }, []);
+
+  useStudyMonitor(onTimerEnd);
+
+  // Countdown timer
+  useEffect(() => {
+    const tick = setInterval(() => {
+      const endStr = localStorage.getItem("edu_study_session_end");
+      if (!endStr) {
+        if (studyActive) { setStudyActive(false); }
+        setRemainingTime("");
+        return;
+      }
+      const diff = Number(endStr) - Date.now();
+      if (diff <= 0) {
+        setRemainingTime("");
+        return;
+      }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setRemainingTime(h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`);
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [studyActive]);
+
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -115,6 +148,7 @@ const Chat = () => {
   const onPinSuccess = () => {
     setShowPin(false);
     localStorage.removeItem("edu_study_session_end");
+    setStudyActive(false);
     toast.success("Study session ended.");
   };
 
@@ -197,7 +231,35 @@ const Chat = () => {
       <AppHeader onMenuClick={() => setSidebarOpen(true)} title="Study Guard" />
 
       <main className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {messages.length === 0 && (
+        {/* Countdown Timer */}
+        {studyActive && remainingTime && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="glass rounded-2xl p-4 text-center glow-primary"
+          >
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <Clock className="h-4 w-4 text-accent" />
+              <span className="text-xs text-muted-foreground font-medium">STUDY TIME REMAINING</span>
+            </div>
+            <p className="font-display text-3xl font-bold text-gradient-gold glow-text-gold">{remainingTime}</p>
+          </motion.div>
+        )}
+
+        {/* Timer Done Banner */}
+        {timerDone && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="glass rounded-2xl p-6 text-center glow-cyan"
+          >
+            <div className="text-4xl mb-2">🎉</div>
+            <h2 className="font-display text-lg font-bold text-gradient-gold glow-text-gold">You are free now!</h2>
+            <p className="text-sm text-muted-foreground mt-1">Great job staying focused!</p>
+          </motion.div>
+        )}
+
+        {messages.length === 0 && !timerDone && (
           <div className="flex-1 flex items-center justify-center pt-20">
             <div className="text-center">
               <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-primary glow-primary flex items-center justify-center">

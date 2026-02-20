@@ -50,11 +50,13 @@
     --neon-pink: 330 95% 60%;
     --neon-green: 145 95% 55%;
     --neon-orange: 25 95% 55%;
+    --neon-gold: 42 100% 50%;
 
     --gradient-primary: linear-gradient(135deg, hsl(270 95% 65%), hsl(330 95% 60%));
     --gradient-secondary: linear-gradient(135deg, hsl(190 95% 50%), hsl(270 95% 65%));
     --gradient-accent: linear-gradient(135deg, hsl(330 95% 60%), hsl(25 95% 55%));
     --gradient-rainbow: linear-gradient(135deg, hsl(270 95% 65%), hsl(190 95% 50%), hsl(145 95% 55%), hsl(330 95% 60%));
+    --gradient-gold: linear-gradient(135deg, hsl(42 100% 50%), hsl(35 100% 60%), hsl(50 100% 70%));
   }
 }
 
@@ -107,6 +109,15 @@
   }
   .glow-text-rainbow {
     text-shadow: 0 0 10px hsl(270 95% 65% / 0.5), 0 0 20px hsl(190 95% 50% / 0.3), 0 0 40px hsl(330 95% 60% / 0.2);
+  }
+  .text-gradient-gold {
+    background: var(--gradient-gold);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .glow-text-gold {
+    text-shadow: 0 0 10px hsl(42 100% 50% / 0.7), 0 0 30px hsl(35 100% 60% / 0.4), 0 0 60px hsl(50 100% 70% / 0.2);
   }
   .glass {
     background: hsl(230 25% 11% / 0.6);

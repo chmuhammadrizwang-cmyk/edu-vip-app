@@ -5,9 +5,12 @@ import ReactMarkdown from "react-markdown";
 import BrandingFooter from "@/components/BrandingFooter";
 import AppHeader from "@/components/AppHeader";
 import AppSidebar from "@/components/AppSidebar";
+import FocusOverlay from "@/components/FocusOverlay";
+import PinDialog from "@/components/PinDialog";
 import { useStudyMonitor } from "@/hooks/useStudyMonitor";
 import { useStudyLock, isStudyActive } from "@/hooks/useStudyLock";
-import { Send, Mic, MicOff, Volume2 } from "lucide-react";
+import { useFocusOverlay } from "@/hooks/useFocusOverlay";
+import { Send, Mic, MicOff, Volume2, Share2, Shield } from "lucide-react";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -16,14 +19,17 @@ const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 const Chat = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const studyActive = isStudyActive();
+  const showFocusOverlay = useFocusOverlay();
   useStudyMonitor();
   useStudyLock();
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [showPin, setShowPin] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+  const userName = localStorage.getItem("study_guard_name") || "Student";
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -51,7 +57,6 @@ const Chat = () => {
     const u = new SpeechSynthesisUtterance(clean);
     u.rate = 0.9;
     u.pitch = 1.0;
-    // Pick a high-quality voice
     const voices = speechSynthesis.getVoices();
     const preferred = voices.find(v =>
       v.name.includes("Google UK English Female") ||
@@ -66,13 +71,11 @@ const Chat = () => {
   const toggleVoice = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) { toast.error("Speech recognition not supported"); return; }
-
     if (isListening) {
       recognitionRef.current?.stop();
       setIsListening(false);
       return;
     }
-
     const recognition = new SR();
     recognition.continuous = false;
     recognition.interimResults = false;
@@ -87,6 +90,32 @@ const Chat = () => {
     recognitionRef.current = recognition;
     recognition.start();
     setIsListening(true);
+  };
+
+  const handleShare = async () => {
+    const shareData = {
+      title: "Study Guard",
+      text: `Hey! I'm using Study Guard to ace my exams. It's a professional Focus Tool developed by Rizwan Ashfaq. Try it here:`,
+      url: "https://edu-vip-app.lovable.app",
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.text} ${shareData.url}`);
+        toast.success("Link copied to clipboard!");
+      }
+    } catch {}
+  };
+
+  const handleStopTimer = () => {
+    setShowPin(true);
+  };
+
+  const onPinSuccess = () => {
+    setShowPin(false);
+    localStorage.removeItem("edu_study_session_end");
+    toast.success("Study session ended.");
   };
 
   const sendMessage = async () => {
@@ -153,7 +182,6 @@ const Chat = () => {
           }
         }
       }
-      // Speak the response
       if (assistantSoFar) speakText(assistantSoFar.slice(0, 500));
     } catch {
       toast.error("Connection error");
@@ -163,18 +191,39 @@ const Chat = () => {
 
   return (
     <div className="h-screen flex flex-col">
+      <FocusOverlay show={showFocusOverlay} />
+      <PinDialog open={showPin} onSuccess={onPinSuccess} onCancel={() => setShowPin(false)} />
       <AppSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <AppHeader onMenuClick={() => setSidebarOpen(true)} title="AI Chat" />
+      <AppHeader onMenuClick={() => setSidebarOpen(true)} title="Study Guard" />
 
       <main className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {messages.length === 0 && (
           <div className="flex-1 flex items-center justify-center pt-20">
             <div className="text-center">
               <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-primary glow-primary flex items-center justify-center">
-                <span className="text-3xl">🤖</span>
+                <Shield className="h-10 w-10 text-primary-foreground" />
               </div>
-              <h2 className="font-display text-xl font-bold text-gradient-primary mb-2">AI Study Assistant</h2>
-              <p className="text-muted-foreground text-sm">Ask me anything about your studies!</p>
+              <h2 className="font-display text-xl font-bold text-gradient-primary mb-2">
+                Welcome, {userName}!
+              </h2>
+              <p className="text-muted-foreground text-sm">Your AI Study Guardian is ready.</p>
+              <div className="flex gap-3 mt-6 justify-center">
+                <button
+                  onClick={handleShare}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-muted/50 border border-border text-foreground text-sm hover:bg-muted transition-all"
+                >
+                  <Share2 className="h-4 w-4 text-secondary" />
+                  Share with Friends
+                </button>
+                {studyActive && (
+                  <button
+                    onClick={handleStopTimer}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-destructive/20 border border-destructive/30 text-destructive text-sm hover:bg-destructive/30 transition-all"
+                  >
+                    Stop Timer
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}

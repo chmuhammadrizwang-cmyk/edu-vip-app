@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import BrandingFooter from "@/components/BrandingFooter";
 import AppHeader from "@/components/AppHeader";
 import AppSidebar from "@/components/AppSidebar";
+import PinDialog from "@/components/PinDialog";
 import { AlertTriangle, Trash2 } from "lucide-react";
 
 interface Incident {
@@ -19,19 +20,26 @@ const typeLabels: Record<string, string> = {
 const Incidents = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [showPin, setShowPin] = useState(false);
 
   useEffect(() => {
     const data = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
-    setIncidents(data.reverse());
+    setIncidents([...data].reverse());
   }, []);
 
-  const clearLog = () => {
+  const handleDeleteClick = () => {
+    setShowPin(true);
+  };
+
+  const onPinSuccess = () => {
+    setShowPin(false);
     localStorage.setItem("study_guard_incidents", "[]");
     setIncidents([]);
   };
 
   return (
     <div className="min-h-screen flex flex-col">
+      <PinDialog open={showPin} onSuccess={onPinSuccess} onCancel={() => setShowPin(false)} />
       <AppSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <AppHeader onMenuClick={() => setSidebarOpen(true)} title="Focus Log" />
 
@@ -43,7 +51,7 @@ const Incidents = () => {
               <h2 className="font-display text-lg font-bold text-foreground">Focus Log</h2>
             </div>
             {incidents.length > 0 && (
-              <button onClick={clearLog} className="p-2 rounded-lg hover:bg-muted transition-colors">
+              <button onClick={handleDeleteClick} className="p-2 rounded-lg hover:bg-muted transition-colors">
                 <Trash2 className="h-4 w-4 text-muted-foreground" />
               </button>
             )}

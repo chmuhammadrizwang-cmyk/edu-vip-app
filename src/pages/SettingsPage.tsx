@@ -21,6 +21,7 @@ const SettingsPage = () => {
   const [newPin, setNewPin] = useState("");
   const [pinError, setPinError] = useState("");
   const [pinSuccess, setPinSuccess] = useState(false);
+  const hasExistingPin = !!localStorage.getItem("study_guard_pin");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -129,11 +130,12 @@ const SettingsPage = () => {
   };
 
   const handleChangePin = () => {
-    const storedPin = localStorage.getItem("study_guard_pin") || "0000";
+    const storedPin = localStorage.getItem("study_guard_pin");
     setPinError("");
     setPinSuccess(false);
 
-    if (currentPin !== storedPin) {
+    // If a PIN already exists, verify the current one
+    if (storedPin && currentPin !== storedPin) {
       setPinError("Current PIN is incorrect");
       return;
     }
@@ -246,15 +248,17 @@ const SettingsPage = () => {
               <h2 className="font-display text-lg font-semibold text-foreground">Change Parental PIN</h2>
             </div>
             <div className="space-y-3">
-              <input
-                type="password"
-                maxLength={4}
-                inputMode="numeric"
-                placeholder="Current PIN"
-                value={currentPin}
-                onChange={(e) => { setCurrentPin(e.target.value.replace(/\D/g, "")); setPinError(""); setPinSuccess(false); }}
-                className="w-full py-3 px-4 rounded-xl bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary transition-all text-center tracking-[0.5em]"
-              />
+              {hasExistingPin && (
+                <input
+                  type="password"
+                  maxLength={4}
+                  inputMode="numeric"
+                  placeholder="Current PIN"
+                  value={currentPin}
+                  onChange={(e) => { setCurrentPin(e.target.value.replace(/\D/g, "")); setPinError(""); setPinSuccess(false); }}
+                  className="w-full py-3 px-4 rounded-xl bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary transition-all text-center tracking-[0.5em]"
+                />
+              )}
               <input
                 type="password"
                 maxLength={4}
@@ -268,10 +272,10 @@ const SettingsPage = () => {
               {pinSuccess && <p className="text-sm text-center" style={{ color: "hsl(145 95% 55%)" }}>PIN updated! ✓</p>}
               <button
                 onClick={handleChangePin}
-                disabled={currentPin.length !== 4 || newPin.length !== 4}
+                disabled={hasExistingPin ? (currentPin.length !== 4 || newPin.length !== 4) : newPin.length !== 4}
                 className="w-full py-3 rounded-xl bg-gradient-primary text-primary-foreground font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
               >
-                Update PIN
+                {hasExistingPin ? "Update PIN" : "Set PIN"}
               </button>
             </div>
           </div>

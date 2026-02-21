@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { auth, db } from "@/lib/firebase";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -24,6 +24,7 @@ const Auth = () => {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
         toast.success("Welcome back!");
+        navigate("/settings");
       } else {
         const cred = await createUserWithEmailAndPassword(auth, email, password);
         await setDoc(doc(db, "users", cred.user.uid), {
@@ -33,9 +34,12 @@ const Auth = () => {
           createdAt: new Date().toISOString(),
         });
         localStorage.setItem("study_guard_name", name);
-        toast.success("Account created!");
+        toast.success("Account created! A verification email has been sent.");
+        // Send verification email in background
+        sendEmailVerification(cred.user).catch(() => {});
+        // Redirect immediately
+        navigate("/settings");
       }
-      navigate("/settings");
     } catch (err: any) {
       toast.error(err.message || "Authentication failed");
     } finally {

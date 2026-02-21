@@ -2,14 +2,19 @@ import { useEffect, useRef, useCallback } from "react";
 
 /**
  * Monitors tab visibility during an active study session.
- * - Only warns when user LEAVES the tab (not while active on it)
+ * - Only warns when user LEAVES the tab (actual tab switch, not screen off)
+ * - Logs both leave and return events
  * - Stops immediately when user returns
  * - Stops when timer ends
- * - Stops when screen is off (to save battery)
+ * - Does NOT trigger on screen off (saves battery & avoids false positives)
  */
 export const useStudyMonitor = (onTimerEnd?: () => void) => {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const checkTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Track whether the window had focus before visibility change
+  // If window loses focus THEN becomes hidden → tab switch
+  // If window still has focus when hidden → screen off
+  const hadFocusBeforeHide = useRef(true);
 
   const stopWarning = useCallback(() => {
     if (intervalRef.current) {
@@ -20,6 +25,12 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
   }, []);
 
   useEffect(() => {
+    // Track window focus to distinguish tab switch from screen off
+    const onFocus = () => { hadFocusBeforeHide.current = true; };
+    const onBlur = () => { hadFocusBeforeHide.current = false; };
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("blur", onBlur);
+
     // Periodically check if timer has ended
     checkTimerRef.current = setInterval(() => {
       const endTimeStr = localStorage.getItem("edu_study_session_end");
@@ -46,14 +57,17 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
       }
 
       if (document.hidden) {
-        // Check if screen is actually off (battery saving) — 
-        // We detect "screen off" heuristically: if hidden and no user interaction
-        // The Page Visibility API fires for both tab switch AND screen off.
-        // We notify in both cases but the interval self-checks for timer expiry.
+        // Distinguish screen off from tab switch:
+        // If window lost focus (blur fired) before going hidden → user switched tabs
+        // If window still had focus when hidden → screen turned off
+        if (hadFocusBeforeHide.current) {
+          // Screen off — do NOT warn, save battery
+          return;
+        }
 
-        // Log incident
+        // Actual tab switch — log and warn
         const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
-        incidents.push({ type: "tab_switch", timestamp: new Date().toISOString() });
+        incidents.push({ type: "tab_leave", timestamp: new Date().toISOString() });
         localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
 
         warnUser();
@@ -66,7 +80,6 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
             return;
           }
           if (!document.hidden) {
-            // User returned — stop immediately
             stopWarning();
             return;
           }
@@ -75,6 +88,11 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
       } else {
         // User returned to the tab — stop ALL warnings immediately
         stopWarning();
+
+        // Log return event
+        const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
+        incidents.push({ type: "tab_return", timestamp: new Date().toISOString() });
+        localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
       }
     };
 
@@ -121,6 +139,8 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
       stopWarning();
       if (checkTimerRef.current) clearInterval(checkTimerRef.current);
     };

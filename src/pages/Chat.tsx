@@ -55,6 +55,29 @@ const Chat = () => {
     return () => clearInterval(tick);
   }, [studyActive]);
 
+  // Back button lock: prevent navigating back to time selection during active session
+  useEffect(() => {
+    if (!studyActive) return;
+
+    // Push an extra history entry so pressing back doesn't leave this page
+    const lockHistory = () => {
+      window.history.pushState({ studyGuardLock: true }, "", window.location.href);
+    };
+
+    lockHistory();
+
+    const handlePopState = (e: PopStateEvent) => {
+      const endStr = localStorage.getItem("edu_study_session_end");
+      if (endStr && Date.now() < Number(endStr)) {
+        // Timer still active — push state back to stay on this page
+        lockHistory();
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [studyActive]);
+
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);

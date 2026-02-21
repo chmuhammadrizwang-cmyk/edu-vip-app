@@ -17,6 +17,8 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
   const hadFocusBeforeHide = useRef(true);
   // Track if we actually logged a leave (to avoid orphan return logs)
   const didLogLeave = useRef(false);
+  // Delay timer for distinguishing screen-off from tab switch
+  const leaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stopWarning = useCallback(() => {
     if (intervalRef.current) {
@@ -59,40 +61,60 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
       }
 
       if (document.hidden) {
-        // Distinguish screen off from tab switch:
-        // If window lost focus (blur fired) before going hidden → user switched tabs
-        // If window still had focus when hidden → screen turned off
-        if (hadFocusBeforeHide.current) {
-          // Screen off — do NOT warn, save battery
-          return;
+        // Cancel any pending leave detection
+        if (leaveTimeoutRef.current) {
+          clearTimeout(leaveTimeoutRef.current);
+          leaveTimeoutRef.current = null;
         }
 
-        // Actual tab switch — log and warn
-        didLogLeave.current = true;
-        const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
-        incidents.push({ type: "tab_leave", timestamp: new Date().toISOString() });
-        localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
-
-        warnUser();
-        intervalRef.current = setInterval(() => {
+        // Use a delay to distinguish screen-off from actual tab switch.
+        // On tab switch: window loses focus (blur fires) THEN visibility changes.
+        // On screen off: visibility changes but focus state is ambiguous.
+        // Wait 400ms — if still hidden and window has no focus, it's a real leave.
+        leaveTimeoutRef.current = setTimeout(() => {
+          leaveTimeoutRef.current = null;
+          // Re-check: if page became visible during the delay, ignore
+          if (!document.hidden) return;
+          // Re-check timer
           const currentEnd = Number(localStorage.getItem("edu_study_session_end") || "0");
-          if (Date.now() >= currentEnd) {
-            stopWarning();
-            localStorage.removeItem("edu_study_session_end");
-            onTimerEnd?.();
-            return;
-          }
-          if (!document.hidden) {
-            stopWarning();
-            return;
-          }
+          if (Date.now() >= currentEnd) return;
+
+          // If window still reports having focus, it's likely screen-off, not tab switch
+          if (hadFocusBeforeHide.current) return;
+
+          // Actual tab switch — log and warn
+          didLogLeave.current = true;
+          const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
+          incidents.push({ type: "tab_leave", timestamp: new Date().toISOString() });
+          localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
+
           warnUser();
-        }, 10000);
+          intervalRef.current = setInterval(() => {
+            const ce = Number(localStorage.getItem("edu_study_session_end") || "0");
+            if (Date.now() >= ce) {
+              stopWarning();
+              localStorage.removeItem("edu_study_session_end");
+              onTimerEnd?.();
+              return;
+            }
+            if (!document.hidden) {
+              stopWarning();
+              return;
+            }
+            warnUser();
+          }, 10000);
+        }, 400);
       } else {
-        // User returned to the tab — stop ALL warnings immediately
+        // User returned — cancel any pending leave detection
+        if (leaveTimeoutRef.current) {
+          clearTimeout(leaveTimeoutRef.current);
+          leaveTimeoutRef.current = null;
+        }
+
+        // Stop ALL warnings immediately
         stopWarning();
 
-        // Only log return if we previously logged a leave (not screen-off)
+        // Only log return if we previously logged a leave
         if (didLogLeave.current) {
           didLogLeave.current = false;
           const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
@@ -149,6 +171,7 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
       window.removeEventListener("blur", onBlur);
       stopWarning();
       if (checkTimerRef.current) clearInterval(checkTimerRef.current);
+      if (leaveTimeoutRef.current) clearTimeout(leaveTimeoutRef.current);
     };
   }, [stopWarning, onTimerEnd]);
 };

@@ -55,12 +55,13 @@ const Chat = () => {
     return () => clearInterval(tick);
   }, [studyActive]);
 
-  // Back button lock: prevent navigating back to time selection during active session
+  // Back button lock: silently prevent navigating back during active session
   useEffect(() => {
     if (!studyActive) return;
 
-    // Push an extra history entry so pressing back doesn't leave this page
+    // Push two extra history entries to absorb back presses without triggering beforeunload
     const lockHistory = () => {
+      window.history.pushState({ studyGuardLock: true }, "", window.location.href);
       window.history.pushState({ studyGuardLock: true }, "", window.location.href);
     };
 
@@ -69,7 +70,9 @@ const Chat = () => {
     const handlePopState = (e: PopStateEvent) => {
       const endStr = localStorage.getItem("edu_study_session_end");
       if (endStr && Date.now() < Number(endStr)) {
-        // Timer still active — push state back to stay on this page
+        // Silently push back — user stays on timer page, no dialog
+        e.preventDefault();
+        e.stopImmediatePropagation();
         lockHistory();
       }
     };

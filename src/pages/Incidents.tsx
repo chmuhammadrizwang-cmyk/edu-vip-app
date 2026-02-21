@@ -13,6 +13,8 @@ interface Incident {
 
 const typeLabels: Record<string, string> = {
   tab_switch: "Left the app",
+  tab_leave: "Left the app",
+  tab_return: "Returned to app",
   wrong_pin: "Wrong PIN attempt",
   close_attempt: "Tried to close tab",
 };

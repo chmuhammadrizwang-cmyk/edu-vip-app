@@ -15,6 +15,8 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
   // If window loses focus THEN becomes hidden → tab switch
   // If window still has focus when hidden → screen off
   const hadFocusBeforeHide = useRef(true);
+  // Track if we actually logged a leave (to avoid orphan return logs)
+  const didLogLeave = useRef(false);
 
   const stopWarning = useCallback(() => {
     if (intervalRef.current) {
@@ -66,6 +68,7 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
         }
 
         // Actual tab switch — log and warn
+        didLogLeave.current = true;
         const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
         incidents.push({ type: "tab_leave", timestamp: new Date().toISOString() });
         localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
@@ -89,10 +92,13 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
         // User returned to the tab — stop ALL warnings immediately
         stopWarning();
 
-        // Log return event
-        const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
-        incidents.push({ type: "tab_return", timestamp: new Date().toISOString() });
-        localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
+        // Only log return if we previously logged a leave (not screen-off)
+        if (didLogLeave.current) {
+          didLogLeave.current = false;
+          const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
+          incidents.push({ type: "tab_return", timestamp: new Date().toISOString() });
+          localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
+        }
       }
     };
 

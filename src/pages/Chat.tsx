@@ -55,11 +55,11 @@ const Chat = () => {
     return () => clearInterval(tick);
   }, [studyActive]);
 
-  // Back button lock: silently prevent navigating back during active session
+  // Back button lock: redirect to about:blank if user forces exit during active session
   useEffect(() => {
     if (!studyActive) return;
 
-    // Push two extra history entries to absorb back presses without triggering beforeunload
+    // Push extra history entries to absorb back presses
     const lockHistory = () => {
       window.history.pushState({ studyGuardLock: true }, "", window.location.href);
       window.history.pushState({ studyGuardLock: true }, "", window.location.href);
@@ -67,18 +67,40 @@ const Chat = () => {
 
     lockHistory();
 
+    let backPressCount = 0;
+    let backPressTimer: ReturnType<typeof setTimeout> | null = null;
+
     const handlePopState = (e: PopStateEvent) => {
       const endStr = localStorage.getItem("edu_study_session_end");
       if (endStr && Date.now() < Number(endStr)) {
-        // Silently push back — user stays on timer page, no dialog
         e.preventDefault();
         e.stopImmediatePropagation();
+
+        backPressCount++;
+
+        // If user presses back 3+ times quickly, force exit to about:blank and log incident
+        if (backPressCount >= 3) {
+          const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
+          incidents.push({ type: "tab_leave", timestamp: new Date().toISOString(), reason: "forced_back_exit" });
+          localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
+          window.location.replace("about:blank");
+          return;
+        }
+
+        // Reset count after 2 seconds
+        if (backPressTimer) clearTimeout(backPressTimer);
+        backPressTimer = setTimeout(() => { backPressCount = 0; }, 2000);
+
+        // Silently re-lock
         lockHistory();
       }
     };
 
     window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      if (backPressTimer) clearTimeout(backPressTimer);
+    };
   }, [studyActive]);
 
   const [messages, setMessages] = useState<Msg[]>([]);

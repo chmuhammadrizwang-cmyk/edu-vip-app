@@ -9,6 +9,7 @@ import SettingsPage from "./pages/SettingsPage";
 import Chat from "./pages/Chat";
 import PuzzleGame from "./pages/PuzzleGame";
 import Incidents from "./pages/Incidents";
+import ParentalSecurity from "./pages/ParentalSecurity";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,6 +27,7 @@ const App = () => (
           <Route path="/chat" element={<Chat />} />
           <Route path="/puzzle" element={<PuzzleGame />} />
           <Route path="/incidents" element={<Incidents />} />
+          <Route path="/parental-security" element={<ParentalSecurity />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

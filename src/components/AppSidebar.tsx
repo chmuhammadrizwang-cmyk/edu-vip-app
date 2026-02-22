@@ -1,4 +1,4 @@
-import { Settings, MessageSquare, Puzzle, AlertTriangle, X, Shield } from "lucide-react";
+import { Settings, MessageSquare, Puzzle, AlertTriangle, X, Shield, ShieldCheck } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
@@ -15,6 +15,7 @@ const navItems = [
   { title: "Settings", url: "/settings", icon: Settings, pinProtected: true },
   { title: "Puzzle Game", url: "/puzzle", icon: Puzzle },
   { title: "Focus Log", url: "/incidents", icon: AlertTriangle },
+  { title: "Parental Security", url: "/parental-security", icon: ShieldCheck, pinProtected: true },
 ];
 
 const AppSidebar = ({ open, onClose }: AppSidebarProps) => {

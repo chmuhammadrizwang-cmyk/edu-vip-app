@@ -1,23 +1,17 @@
-import { useState, useEffect } from "react";
-import { isStudyActive } from "@/hooks/useStudyLock";
+import { useState, useCallback } from "react";
 
 /**
- * Detects when the app returns from background during an active session.
- * Shows a "black-hole" overlay for 3 seconds to re-focus the user.
+ * Provides overlay state that can be triggered externally.
+ * No longer listens to visibilitychange directly — 
+ * useStudyMonitor is the single source of truth for focus events.
  */
 export const useFocusOverlay = () => {
   const [showOverlay, setShowOverlay] = useState(false);
 
-  useEffect(() => {
-    const handler = () => {
-      if (!document.hidden && isStudyActive()) {
-        setShowOverlay(true);
-        setTimeout(() => setShowOverlay(false), 3000);
-      }
-    };
-    document.addEventListener("visibilitychange", handler);
-    return () => document.removeEventListener("visibilitychange", handler);
+  const triggerOverlay = useCallback(() => {
+    setShowOverlay(true);
+    setTimeout(() => setShowOverlay(false), 3000);
   }, []);
 
-  return showOverlay;
+  return { showOverlay, triggerOverlay };
 };

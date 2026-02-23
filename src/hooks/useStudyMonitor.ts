@@ -21,6 +21,7 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
 
   // Prevent duplicate "Left" logs when both blur and visibilitychange fire
   const didLogLeave = useRef(false);
+  const visibilityTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const getSessionEnd = () => {
     const es = localStorage.getItem("edu_study_session_end");
@@ -205,9 +206,11 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
     }
 
     // ── SINGLE visibilitychange listener ──
+    // Uses a 1-second timeout + Performance.now() to detect screen-off vs app-exit.
+    // When screen locks, the OS freezes JS execution, so the timeout fires late.
+    // When user switches apps, JS keeps running and the timeout fires on time.
     const onVisibilityChange = () => {
       if (!isActive()) {
-        // Session might have ended while away
         const end = getSessionEnd();
         if (end && Date.now() >= end) {
           localStorage.removeItem("edu_study_session_end");
@@ -219,15 +222,41 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
       }
 
       if (document.hidden) {
-        if (document.hasFocus()) {
-          // Screen locked — no alarm
-          handleScreenLocked();
-        } else if (!didLogLeave.current) {
-          // Backup for app exit (blur should have caught it first)
-          handleLeft();
+        // Cancel any previous pending check
+        if (visibilityTimeoutRef.current) {
+          clearTimeout(visibilityTimeoutRef.current);
+          visibilityTimeoutRef.current = null;
         }
+
+        const scheduledAt = performance.now();
+        const DELAY = 1000; // 1 second
+        const TOLERANCE = 500; // if execution was paused > 500ms extra, it's screen lock
+
+        visibilityTimeoutRef.current = setTimeout(() => {
+          visibilityTimeoutRef.current = null;
+          if (!isActive()) return;
+
+          const elapsed = performance.now() - scheduledAt;
+          const wasPaused = elapsed > DELAY + TOLERANCE;
+
+          if (wasPaused) {
+            // Browser execution was frozen → screen was locked
+            console.log("Screen turned off (detected via execution pause) - No Alarm");
+            logIncident("screen_locked");
+          } else if (!didLogLeave.current) {
+            // Execution continued normally → user actually left the app
+            console.log("Left App (confirmed via timeout) - Starting Alarm");
+            didLogLeave.current = true;
+            logIncident("left_app");
+            startAlarm();
+          }
+        }, DELAY);
       } else {
-        // Came back
+        // Came back — cancel pending detection if still waiting
+        if (visibilityTimeoutRef.current) {
+          clearTimeout(visibilityTimeoutRef.current);
+          visibilityTimeoutRef.current = null;
+        }
         handleReturned();
       }
     };
@@ -264,6 +293,7 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("blur", onBlur);
       window.removeEventListener("focus", onFocus);
+      if (visibilityTimeoutRef.current) { clearTimeout(visibilityTimeoutRef.current); visibilityTimeoutRef.current = null; }
       stopAlarm();
       releaseWakeLock();
       if (checkTimerRef.current) clearInterval(checkTimerRef.current);

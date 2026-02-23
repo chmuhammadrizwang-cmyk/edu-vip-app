@@ -12,11 +12,13 @@ interface Incident {
 }
 
 const typeLabels: Record<string, string> = {
+  left_app: "Left the app",
   tab_switch: "Left the app",
   tab_leave: "Left the app",
-  tab_return: "Returned to app",
+  returned: "Returned",
+  tab_return: "Returned",
+  screen_on: "Returned",
   screen_locked: "Screen Locked",
-  screen_on: "Screen On / Returned",
   wrong_pin: "Wrong PIN attempt",
   close_attempt: "Tried to close tab",
 };

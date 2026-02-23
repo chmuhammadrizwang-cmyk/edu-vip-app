@@ -1,36 +1,58 @@
 import { useEffect, useRef, useCallback } from "react";
 
 /**
- * Monitors tab visibility during an active study session.
- * - Triggers alarm on blur (app switch / home / tab switch) immediately
- * - visibilitychange is used as backup + to detect return
- * - Web Worker drives the 10-second alarm interval to survive mobile throttling
- * - Service Worker sends persistent notifications in background
- * - Wake Lock keeps the screen alive during study
+ * SINGLE SOURCE OF TRUTH for focus/visibility monitoring during study sessions.
+ *
+ * Rules:
+ * - document.hidden && document.hasFocus() => "Screen Locked" (NO alarm)
+ * - document.hidden && !document.hasFocus() => "Left the app" + START alarm
+ * - !document.hidden => "Returned" + STOP alarm
+ * - window blur (immediate) => "Left the app" + START alarm
+ * - window focus => "Returned" + STOP alarm
+ *
+ * No other file should listen to visibilitychange or blur/focus for study logic.
  */
-export const useStudyMonitor = (onTimerEnd?: () => void) => {
+export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) => {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const checkTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const didLogLeave = useRef(false);
   const workerRef = useRef<Worker | null>(null);
   const wakeLockRef = useRef<any>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const isSessionActive = useRef(false);
+
+  // Prevent duplicate "Left" logs when both blur and visibilitychange fire
+  const didLogLeave = useRef(false);
 
   const getSessionEnd = () => {
     const es = localStorage.getItem("edu_study_session_end");
     return es ? Number(es) : 0;
   };
 
-  const stopWarning = useCallback(() => {
+  const isActive = () => {
+    const end = getSessionEnd();
+    return end > 0 && Date.now() < end;
+  };
+
+  // ── Incident logging (single helper, prevents stacking) ──
+  const logIncident = useCallback((type: string) => {
+    const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
+    incidents.push({ type, timestamp: new Date().toISOString() });
+    localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
+  }, []);
+
+  // ── Alarm helpers ──
+  const stopAlarm = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-    if (workerRef.current) {
-      workerRef.current.postMessage({ type: "STOP" });
-    }
+    workerRef.current?.postMessage({ type: "STOP" });
     speechSynthesis.cancel();
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.ready
+        .then((reg) => reg.active?.postMessage({ type: "STOP_ALARM_LOOP" }))
+        .catch(() => {});
+    }
   }, []);
 
   const warnUser = useCallback(() => {
@@ -53,7 +75,6 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
     if (preferred) u.voice = preferred;
     speechSynthesis.speak(u);
 
-    // High-priority beep via persistent AudioContext
     try {
       const ctx = audioCtxRef.current || new AudioContext();
       if (ctx.state === "suspended") ctx.resume();
@@ -65,10 +86,9 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
       osc.type = "square";
       gain.gain.value = 0.7;
       osc.start();
-      setTimeout(() => { osc.stop(); }, 800);
+      setTimeout(() => osc.stop(), 800);
     } catch {}
 
-    // Web notification
     if ("Notification" in window && Notification.permission === "granted") {
       new Notification("🔒 Study Guard", {
         body: `${userName}, stop wasting time! Go back to your studies!`,
@@ -78,7 +98,43 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
     }
   }, []);
 
-  // Acquire Wake Lock
+  const startAlarm = useCallback(() => {
+    warnUser();
+
+    workerRef.current?.postMessage({ type: "START", interval: 10000 });
+
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => {
+      if (!isActive()) {
+        stopAlarm();
+        localStorage.removeItem("edu_study_session_end");
+        onTimerEnd?.();
+        return;
+      }
+      if (document.hidden || !document.hasFocus()) {
+        warnUser();
+      } else {
+        stopAlarm();
+      }
+    }, 10000);
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.ready
+        .then((reg) => {
+          const remaining = getSessionEnd() - Date.now();
+          if (remaining > 0) {
+            reg.active?.postMessage({
+              type: "START_ALARM_LOOP",
+              duration: remaining,
+              interval: 10000,
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [warnUser, stopAlarm, onTimerEnd]);
+
+  // ── Wake Lock ──
   const acquireWakeLock = useCallback(async () => {
     try {
       if ("wakeLock" in navigator) {
@@ -97,202 +153,122 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
     }
   }, []);
 
-  // Start alarm loop (Web Worker + fallback setInterval + Service Worker notifications)
-  const startAlarmLoop = useCallback(() => {
-    // Immediately fire first warning
-    warnUser();
+  // ── Core event handlers ──
+  const handleLeft = useCallback(() => {
+    if (!isActive() || didLogLeave.current) return;
+    didLogLeave.current = true;
+    console.log("Left App - Starting Alarm");
+    logIncident("left_app");
+    startAlarm();
+  }, [logIncident, startAlarm]);
 
-    // Web Worker alarm loop
-    if (workerRef.current) {
-      workerRef.current.postMessage({ type: "START", interval: 10000 });
-    }
+  const handleScreenLocked = useCallback(() => {
+    if (!isActive()) return;
+    console.log("Screen turned off - No Alarm");
+    logIncident("screen_locked");
+  }, [logIncident]);
 
-    // Fallback setInterval (in case worker is throttled)
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(() => {
-      const endTime = getSessionEnd();
-      if (Date.now() >= endTime) {
-        stopWarning();
-        localStorage.removeItem("edu_study_session_end");
-        releaseWakeLock();
-        onTimerEnd?.();
-        return;
-      }
-      // Keep warning if still away
-      if (document.hidden || !document.hasFocus()) {
-        warnUser();
-      } else {
-        stopWarning();
-      }
-    }, 10000);
-
-    // Service Worker persistent notifications
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.ready.then((registration) => {
-        const endTime = getSessionEnd();
-        const remaining = endTime - Date.now();
-        if (remaining > 0) {
-          registration.active?.postMessage({
-            type: "START_ALARM_LOOP",
-            duration: remaining,
-            interval: 10000,
-          });
-        }
-      }).catch(() => {});
-    }
-  }, [warnUser, stopWarning, releaseWakeLock, onTimerEnd]);
-
-  const handleLeave = useCallback((source: "blur" | "visibility") => {
-    const endTime = getSessionEnd();
-    if (!endTime || Date.now() >= endTime) return;
-
-    if (source === "visibility" && document.hidden) {
-      // Screen locked: hidden but still has focus => screen off, no alarm
-      if (document.hasFocus()) {
-        console.log("Screen turned off - No Alarm");
-        const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
-        incidents.push({ type: "screen_locked", timestamp: new Date().toISOString() });
-        localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
-        return;
-      }
-      // Hidden and no focus => real app exit (caught by visibility as backup)
-      if (didLogLeave.current) return; // already handled by blur
-    }
-
-    // Real app exit (blur or visibility backup): log "Left App" and start alarm
-    if (!didLogLeave.current) {
-      didLogLeave.current = true;
-      console.log("Left App - Starting Alarm");
-      const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
-      incidents.push({ type: "tab_leave", timestamp: new Date().toISOString() });
-      localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
-    }
-
-    startAlarmLoop();
-  }, [startAlarmLoop]);
-
-  const handleReturn = useCallback(() => {
-    stopWarning();
-
-    // Stop Service Worker alarm loop
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.ready.then((registration) => {
-        registration.active?.postMessage({ type: "STOP_ALARM_LOOP" });
-      }).catch(() => {});
-    }
-
+  const handleReturned = useCallback(() => {
+    if (!isActive()) return;
+    stopAlarm();
     acquireWakeLock();
-
-    const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
     if (didLogLeave.current) {
       didLogLeave.current = false;
-      incidents.push({ type: "tab_return", timestamp: new Date().toISOString() });
-    } else {
-      // Returning from screen lock (no alarm was triggered)
-      incidents.push({ type: "screen_on", timestamp: new Date().toISOString() });
+      logIncident("returned");
+      onReturn?.();
     }
-    localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
-  }, [stopWarning, acquireWakeLock]);
+  }, [stopAlarm, acquireWakeLock, logIncident, onReturn]);
 
   useEffect(() => {
-    // Initialize persistent AudioContext
-    try {
-      audioCtxRef.current = new AudioContext();
-    } catch {}
+    // Init AudioContext
+    try { audioCtxRef.current = new AudioContext(); } catch {}
 
-    // Initialize Web Worker
+    // Init Web Worker
     try {
       workerRef.current = new Worker("/alarm-worker.js");
       workerRef.current.onmessage = (e) => {
         if (e.data.type === "TICK") {
-          const endTime = getSessionEnd();
-          if (!endTime || Date.now() >= endTime) {
-            stopWarning();
-            return;
-          }
-          if (document.hidden || !document.hasFocus()) {
-            warnUser();
-          }
+          if (!isActive()) { stopAlarm(); return; }
+          if (document.hidden || !document.hasFocus()) warnUser();
         }
       };
     } catch {}
 
-    // Acquire wake lock if session is active
-    const endTime = getSessionEnd();
-    if (endTime && Date.now() < endTime) {
-      isSessionActive.current = true;
-      acquireWakeLock();
-    }
+    // Acquire wake lock if session active
+    if (isActive()) acquireWakeLock();
 
-    // Register and force-update service worker
+    // Register service worker
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/alarm-sw.js").then((reg) => {
         reg.update().catch(() => {});
       }).catch(() => {});
     }
 
-    // PRIMARY: blur fires immediately on tab switch, home button, app switch
-    const onBlur = () => {
-      const et = getSessionEnd();
-      if (!et || Date.now() >= et) return;
-      // Small delay to distinguish from screen-off:
-      // On mobile, blur WITHOUT subsequent visibilitychange = screen-off
-      // blur WITH visibilitychange = real leave (but we handle both for safety)
-      handleLeave("blur");
-    };
-
-    const onFocus = () => {
-      const et = getSessionEnd();
-      if (!et || Date.now() >= et) return;
-      handleReturn();
-    };
-
-    window.addEventListener("blur", onBlur);
-    window.addEventListener("focus", onFocus);
-
-    // BACKUP: visibilitychange catches cases blur might miss
-    const handleVisibilityChange = () => {
-      const et = getSessionEnd();
-      if (!et) return;
-
-      if (Date.now() >= et) {
-        localStorage.removeItem("edu_study_session_end");
-        stopWarning();
-        releaseWakeLock();
-        onTimerEnd?.();
+    // ── SINGLE visibilitychange listener ──
+    const onVisibilityChange = () => {
+      if (!isActive()) {
+        // Session might have ended while away
+        const end = getSessionEnd();
+        if (end && Date.now() >= end) {
+          localStorage.removeItem("edu_study_session_end");
+          stopAlarm();
+          releaseWakeLock();
+          onTimerEnd?.();
+        }
         return;
       }
 
       if (document.hidden) {
-        handleLeave("visibility");
+        if (document.hasFocus()) {
+          // Screen locked — no alarm
+          handleScreenLocked();
+        } else if (!didLogLeave.current) {
+          // Backup for app exit (blur should have caught it first)
+          handleLeft();
+        }
       } else {
-        handleReturn();
+        // Came back
+        handleReturned();
       }
     };
 
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    // ── SINGLE blur listener ──
+    const onBlur = () => {
+      if (!isActive()) return;
+      handleLeft();
+    };
 
-    // Periodically check if timer has ended
+    // ── SINGLE focus listener ──
+    const onFocus = () => {
+      if (!isActive()) return;
+      handleReturned();
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", onFocus);
+
+    // Timer end check
     checkTimerRef.current = setInterval(() => {
       const es = getSessionEnd();
       if (!es) return;
       if (Date.now() >= es) {
         localStorage.removeItem("edu_study_session_end");
-        stopWarning();
+        stopAlarm();
         releaseWakeLock();
         onTimerEnd?.();
       }
     }, 1000);
 
     return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("blur", onBlur);
-      stopWarning();
+      window.removeEventListener("focus", onFocus);
+      stopAlarm();
       releaseWakeLock();
       if (checkTimerRef.current) clearInterval(checkTimerRef.current);
       if (workerRef.current) { workerRef.current.terminate(); workerRef.current = null; }
       if (audioCtxRef.current) { audioCtxRef.current.close().catch(() => {}); audioCtxRef.current = null; }
     };
-  }, [stopWarning, warnUser, onTimerEnd, acquireWakeLock, releaseWakeLock, handleLeave, handleReturn]);
+  }, [stopAlarm, warnUser, onTimerEnd, acquireWakeLock, releaseWakeLock, handleLeft, handleScreenLocked, handleReturned]);
 };

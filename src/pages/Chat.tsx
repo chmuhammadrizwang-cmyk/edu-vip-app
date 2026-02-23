@@ -21,7 +21,7 @@ const Chat = () => {
   const [studyActive, setStudyActive] = useState(isStudyActive());
   const [timerDone, setTimerDone] = useState(false);
   const [remainingTime, setRemainingTime] = useState("");
-  const showFocusOverlay = useFocusOverlay();
+  const { showOverlay: showFocusOverlay, triggerOverlay } = useFocusOverlay();
   useStudyLock();
 
   const onTimerEnd = useCallback(() => {
@@ -31,7 +31,7 @@ const Chat = () => {
     toast.success("You are free now! 🎉");
   }, []);
 
-  useStudyMonitor(onTimerEnd);
+  useStudyMonitor(onTimerEnd, triggerOverlay);
 
   // Countdown timer
   useEffect(() => {

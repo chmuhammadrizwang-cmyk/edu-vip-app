@@ -146,22 +146,23 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
     const endTime = getSessionEnd();
     if (!endTime || Date.now() >= endTime) return;
 
-    // Screen-off detection: document.hidden is true but hasFocus was true
-    // visibilitychange fires on screen lock, but blur does NOT fire
     if (source === "visibility" && document.hidden) {
-      // If we already handled this via blur (real app exit), skip
-      if (didLogLeave.current) return;
-
-      // Screen locked: log it but do NOT start alarm
-      const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
-      incidents.push({ type: "screen_locked", timestamp: new Date().toISOString() });
-      localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
-      return;
+      // Screen locked: hidden but still has focus => screen off, no alarm
+      if (document.hasFocus()) {
+        console.log("Screen turned off - No Alarm");
+        const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
+        incidents.push({ type: "screen_locked", timestamp: new Date().toISOString() });
+        localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
+        return;
+      }
+      // Hidden and no focus => real app exit (caught by visibility as backup)
+      if (didLogLeave.current) return; // already handled by blur
     }
 
-    // Real app exit (blur): log "Left App" and start alarm
+    // Real app exit (blur or visibility backup): log "Left App" and start alarm
     if (!didLogLeave.current) {
       didLogLeave.current = true;
+      console.log("Left App - Starting Alarm");
       const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
       incidents.push({ type: "tab_leave", timestamp: new Date().toISOString() });
       localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
@@ -182,12 +183,15 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
 
     acquireWakeLock();
 
+    const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
     if (didLogLeave.current) {
       didLogLeave.current = false;
-      const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
       incidents.push({ type: "tab_return", timestamp: new Date().toISOString() });
-      localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
+    } else {
+      // Returning from screen lock (no alarm was triggered)
+      incidents.push({ type: "screen_on", timestamp: new Date().toISOString() });
     }
+    localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
   }, [stopWarning, acquireWakeLock]);
 
   useEffect(() => {

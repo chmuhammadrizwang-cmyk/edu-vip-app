@@ -16,6 +16,7 @@ const typeLabels: Record<string, string> = {
   tab_leave: "Left the app",
   tab_return: "Returned to app",
   screen_locked: "Screen Locked",
+  screen_on: "Screen On / Returned",
   wrong_pin: "Wrong PIN attempt",
   close_attempt: "Tried to close tab",
 };

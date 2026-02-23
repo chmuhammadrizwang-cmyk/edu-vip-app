@@ -142,10 +142,24 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
     }
   }, [warnUser, stopWarning, releaseWakeLock, onTimerEnd]);
 
-  const handleLeave = useCallback(() => {
+  const handleLeave = useCallback((source: "blur" | "visibility") => {
     const endTime = getSessionEnd();
     if (!endTime || Date.now() >= endTime) return;
 
+    // Screen-off detection: document.hidden is true but hasFocus was true
+    // visibilitychange fires on screen lock, but blur does NOT fire
+    if (source === "visibility" && document.hidden) {
+      // If we already handled this via blur (real app exit), skip
+      if (didLogLeave.current) return;
+
+      // Screen locked: log it but do NOT start alarm
+      const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
+      incidents.push({ type: "screen_locked", timestamp: new Date().toISOString() });
+      localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
+      return;
+    }
+
+    // Real app exit (blur): log "Left App" and start alarm
     if (!didLogLeave.current) {
       didLogLeave.current = true;
       const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
@@ -220,7 +234,7 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
       // Small delay to distinguish from screen-off:
       // On mobile, blur WITHOUT subsequent visibilitychange = screen-off
       // blur WITH visibilitychange = real leave (but we handle both for safety)
-      handleLeave();
+      handleLeave("blur");
     };
 
     const onFocus = () => {
@@ -246,7 +260,7 @@ export const useStudyMonitor = (onTimerEnd?: () => void) => {
       }
 
       if (document.hidden) {
-        handleLeave();
+        handleLeave("visibility");
       } else {
         handleReturn();
       }

@@ -209,74 +209,45 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
     // Uses a 1-second timeout + Performance.now() to detect screen-off vs app-exit.
     // When screen locks, the OS freezes JS execution, so the timeout fires late.
     // When user switches apps, JS keeps running and the timeout fires on time.
-    const onVisibilityChange = () => {
-      if (!isActive()) {
-        const end = getSessionEnd();
-        if (end && Date.now() >= end) {
-          localStorage.removeItem("edu_study_session_end");
-          stopAlarm();
-          releaseWakeLock();
-          onTimerEnd?.();
-        }
-        return;
-      }
+      const hiddenAtRef = useRef<number>(0);
+  const didLogLeaveRef = useRef<boolean>(false);
+  const timeoutRef = useRef<any>(null);
 
+  useEffect(() => {
+    const handleVisibilityChange = () => {
       if (document.hidden) {
-        // Cancel any previous pending check
-        if (visibilityTimeoutRef.current) {
-          clearTimeout(visibilityTimeoutRef.current);
-          visibilityTimeoutRef.current = null;
-        }
+        hiddenAtRef.current = performance.now();
+        
+        timeoutRef.current = setTimeout(() => {
+          const diff = performance.now() - hiddenAtRef.current;
+          
+          // Agar 2.5 seconds se zyada gap hai to Screen Lock hai
+          if (diff > 2500) return;
 
-        const scheduledAt = performance.now();
-        const DELAY = 1000; // 1 second
-        const TOLERANCE = 500; // if execution was paused > 500ms extra, it's screen lock
-
-        visibilityTimeoutRef.current = setTimeout(() => {
-          visibilityTimeoutRef.current = null;
-          if (!isActive()) return;
-
-          const elapsed = performance.now() - scheduledAt;
-          const wasPaused = elapsed > DELAY + TOLERANCE;
-
-          if (wasPaused) {
-            // Browser execution was frozen → screen was locked
-            console.log("Screen turned off (detected via execution pause) - No Alarm");
-            logIncident("screen_locked");
-          } else if (!didLogLeave.current) {
-            // Execution continued normally → user actually left the app
-            console.log("Left App (confirmed via timeout) - Starting Alarm");
-            didLogLeave.current = true;
-            logIncident("left_app");
+          if (!didLogLeaveRef.current) {
+            logEvent("Left");
             startAlarm();
+            didLogLeaveRef.current = true;
           }
-        }, DELAY);
+        }, 1200);
       } else {
-        // Came back — cancel pending detection if still waiting
-        if (visibilityTimeoutRef.current) {
-          clearTimeout(visibilityTimeoutRef.current);
-          visibilityTimeoutRef.current = null;
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+        if (didLogLeaveRef.current) {
+          logEvent("Return");
+          stopAlarm();
+          didLogLeaveRef.current = false;
         }
-        handleReturned();
       }
     };
 
-    // ── SINGLE blur listener ──
-    const onBlur = () => {
-      if (!isActive()) return;
-      handleLeft();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-
-    // ── SINGLE focus listener ──
-    const onFocus = () => {
-      if (!isActive()) return;
-      handleReturned();
-    };
-
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    window.addEventListener("blur", onBlur);
-    window.addEventListener("focus", onFocus);
-
+  }, [startAlarm, stopAlarm, logEvent]);
+    
     // Timer end check
     checkTimerRef.current = setInterval(() => {
       const es = getSessionEnd();
@@ -290,9 +261,6 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
     }, 1000);
 
     return () => {
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.removeEventListener("blur", onBlur);
-      window.removeEventListener("focus", onFocus);
       if (visibilityTimeoutRef.current) { clearTimeout(visibilityTimeoutRef.current); visibilityTimeoutRef.current = null; }
       stopAlarm();
       releaseWakeLock();

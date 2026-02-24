@@ -1,17 +1,21 @@
-import { useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 
-/**
- * Provides overlay state that can be triggered externally.
- * No longer listens to visibilitychange directly — 
- * useStudyMonitor is the single source of truth for focus events.
- */
 export const useFocusOverlay = () => {
   const [showOverlay, setShowOverlay] = useState(false);
 
-  const triggerOverlay = useCallback(() => {
-    setShowOverlay(true);
-    setTimeout(() => setShowOverlay(false), 3000);
+  useEffect(() => {
+    const handleVisibility = () => {
+      // Jab screen hide ho (Tab switch), tab parda dikhaye
+      if (document.hidden) {
+        setShowOverlay(true);
+      } else {
+        setShowOverlay(false);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, []);
 
-  return { showOverlay, triggerOverlay };
+  return { showOverlay };
 };

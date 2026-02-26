@@ -158,7 +158,6 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("blur", () => { if(isActive()) handleVisibilityChange(); });
 
     checkTimerRef.current = setInterval(() => {
       if (isActive() && Date.now() >= getSessionEnd()) {

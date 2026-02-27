@@ -1,10 +1,10 @@
 import { useEffect, useRef, useCallback } from "react";
 
 /**
- * SINGLE SOURCE OF TRUTH for focus/visibility monitoring during the project study sessions.
- * Fixed for stable mobile-friendly event handling (pagehide/pageshow).
+ * STABLE Study Monitor Hook
+ * - Handles screen off, app switch, and mobile-friendly pagehide/pageshow events.
+ * - Ensures logs and alarms fire only once per leave/return.
  */
-
 export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) => {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const checkTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -14,15 +14,8 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
   const didLogLeave = useRef(false);
   const eventLockRef = useRef(false);
 
-  const getSessionEnd = () => {
-    const es = localStorage.getItem("edu_study_session_end");
-    return es ? Number(es) : 0;
-  };
-
-  const isActive = () => {
-    const end = getSessionEnd();
-    return end > 0 && Date.now() < end;
-  };
+  const getSessionEnd = () => Number(localStorage.getItem("edu_study_session_end") || 0);
+  const isActive = () => getSessionEnd() > 0 && Date.now() < getSessionEnd();
 
   const logIncident = useCallback((type: string) => {
     const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
@@ -31,13 +24,10 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
   }, []);
 
   const stopAlarm = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = null;
     workerRef.current?.postMessage({ type: "STOP" });
     speechSynthesis.cancel();
-
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.ready.then((reg) => {
         reg.active?.postMessage({ type: "STOP_ALARM_LOOP" });
@@ -48,24 +38,18 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
   const warnUser = useCallback(() => {
     const username = localStorage.getItem("study_guard_name") || "Student";
     speechSynthesis.cancel();
-    
-    const message = `${username}, stop wasting time! Go back to your studies immediately!`;
-    const u = new SpeechSynthesisUtterance(message);
+    const u = new SpeechSynthesisUtterance(`${username}, stop wasting time! Go back to your studies immediately!`);
     u.rate = 0.9;
     u.pitch = 1.1;
-
     const voices = speechSynthesis.getVoices();
     const preferred = voices.find(v => v.name.includes("Google US English") || v.lang.startsWith("en"));
     if (preferred) u.voice = preferred;
     speechSynthesis.speak(u);
 
     try {
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
+      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       const ctx = audioCtxRef.current;
       if (ctx.state === "suspended") ctx.resume();
-      
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
@@ -75,66 +59,39 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
       gain.gain.value = 0.7;
       osc.start();
       setTimeout(() => osc.stop(), 500);
-    } catch (e) {
-      console.error("Audio Context Error:", e);
-    }
+    } catch (e) { console.error(e); }
   }, []);
 
   const startAlarm = useCallback(() => {
-    warnUser();
-    workerRef.current?.postMessage({ type: "START", interval: 10000 });
-
     if (!intervalRef.current) {
+      warnUser();
+      workerRef.current?.postMessage({ type: "START", interval: 10000 });
       intervalRef.current = setInterval(() => {
-        if (!isActive()) {
-          stopAlarm();
-          return;
-        }
-        if (document.hidden || !document.hasFocus()) {
-          warnUser();
-        } else {
-          stopAlarm();
-        }
+        if (!isActive()) { stopAlarm(); return; }
+        if (document.hidden || !document.hasFocus()) warnUser();
+        else stopAlarm();
       }, 10000);
     }
   }, [warnUser, stopAlarm]);
 
   const acquireWakeLock = useCallback(async () => {
-    try {
-      if ("wakeLock" in navigator) {
-        wakeLockRef.current = await (navigator as any).wakeLock.request("screen");
-      }
-    } catch (e) {
-      console.error("WakeLock Error:", e);
-    }
+    try { if ("wakeLock" in navigator) wakeLockRef.current = await (navigator as any).wakeLock.request("screen"); }
+    catch (e) { console.error("WakeLock Error:", e); }
   }, []);
 
   useEffect(() => {
-    // Initialization
-    try {
-      audioCtxRef.current = new AudioContext();
-    } catch (e) {}
-
+    try { audioCtxRef.current = new AudioContext(); } catch {}
     try {
       workerRef.current = new Worker("/alarm-worker.js");
       workerRef.current.onmessage = (e) => {
-        if (e.data.type === "TICK" && isActive() && (document.hidden || !document.hasFocus())) {
-          warnUser();
-        }
+        if (e.data.type === "TICK" && isActive() && (document.hidden || !document.hasFocus())) warnUser();
       };
-    } catch (e) {}
+    } catch {}
 
     if (isActive()) acquireWakeLock();
 
-    /**
-     * STABLE EVENT HANDLERS
-     * pagehide/pageshow are more reliable on mobile than visibilitychange
-     * for tracking when an app is actually backgrounded or terminated.
-     */
-    const handleAppLeave = () => {
+    const handleLeave = () => {
       if (!isActive() || eventLockRef.current) return;
-
-      // Ignore dashboard or home redirects
       const path = window.location.hash || window.location.pathname || "";
       if (path === "/" || path === "#/") return;
 
@@ -143,39 +100,28 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
         didLogLeave.current = true;
         logIncident("left_app");
         startAlarm();
-        
         setTimeout(() => { eventLockRef.current = false; }, 500);
       }
     };
 
-    const handleAppReturn = () => {
+    const handleReturn = () => {
       if (!isActive() || eventLockRef.current) return;
-
       if (didLogLeave.current) {
         eventLockRef.current = true;
         didLogLeave.current = false;
         stopAlarm();
-
-        const remainingTime = Math.max(0, getSessionEnd() - Date.now());
-        logIncident(`returned (Remaining: ${Math.floor(remainingTime / 1000)}s)`);
-        
+        const remaining = Math.max(0, getSessionEnd() - Date.now());
+        logIncident(`returned (Remaining: ${Math.floor(remaining / 1000)}s)`);
         onReturn?.();
         acquireWakeLock();
-
         setTimeout(() => { eventLockRef.current = false; }, 500);
       }
     };
 
-    // Use pagehide/pageshow for mobile stability
-    window.addEventListener("pagehide", handleAppLeave);
-    window.addEventListener("pageshow", handleAppReturn);
-    // Fallback for desktop browser switching
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) handleAppLeave();
-      else handleAppReturn();
-    });
+    window.addEventListener("pagehide", handleLeave);
+    window.addEventListener("pageshow", handleReturn);
+    document.addEventListener("visibilitychange", () => { document.hidden ? handleLeave() : handleReturn(); });
 
-    // Session Timer Check
     checkTimerRef.current = setInterval(() => {
       if (isActive() && Date.now() >= getSessionEnd()) {
         localStorage.removeItem("edu_study_session_end");
@@ -185,10 +131,9 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
     }, 1000);
 
     return () => {
-      window.removeEventListener("pagehide", handleAppLeave);
-      window.removeEventListener("pageshow", handleAppReturn);
-      document.removeEventListener("visibilitychange", handleAppLeave);
-      
+      window.removeEventListener("pagehide", handleLeave);
+      window.removeEventListener("pageshow", handleReturn);
+      document.removeEventListener("visibilitychange", handleLeave);
       if (checkTimerRef.current) clearInterval(checkTimerRef.current);
       stopAlarm();
       workerRef.current?.terminate();

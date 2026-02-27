@@ -51,7 +51,9 @@ if ("serviceWorker" in navigator) {
 const warnUser = useCallback(() => {
 const username = localStorage.getItem("study_guard_name") || "Student";
 speechSynthesis.cancel();
-const u = new SpeechSynthesisUtterance(${username}, stop wasting time! Go back to your studies immediately!);
+const u = new SpeechSynthesisUtterance(
+  `${username}, stop wasting time! Go back to your studies immediately!`
+);
 u.rate = 0.9;
 u.pitch = 1.1;
 

@@ -121,7 +121,7 @@ const handleVisibilityChange = () => {
 if (!isActive()) return;
 
 // 🚫 Ignore dashboard auto-redirect
-const path = window.location.hash || window.location.pathname;
+const path = window.location.hash || "";
 if (path === "/" || path === "#/") return;
 
 // 📤 APP LEFT

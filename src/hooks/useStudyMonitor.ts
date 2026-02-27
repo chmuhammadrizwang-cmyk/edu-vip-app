@@ -15,7 +15,8 @@ const workerRef = useRef<Worker | null>(null);
 const wakeLockRef = useRef<any>(null);
 const audioCtxRef = useRef<AudioContext | null>(null);
 const didLogLeave = useRef<boolean>(false);
-
+const eventLockRef = useRef(false);
+  
 const getSessionEnd = () => {
 const es = localStorage.getItem("edu_study_session_end");
 return es ? Number(es) : 0;
@@ -119,39 +120,42 @@ if (isActive()) acquireWakeLock();
 
 // FIXED: Smart Visibility Logic (Screen-off vs App-switch)  
 const handleVisibilityChange = () => {
+  if (!isActive()) return;
 
-if (!isActive()) return;
+  // 🛑 MOBILE DOUBLE-EVENT GUARD
+  if (eventLockRef.current) return;
+  eventLockRef.current = true;
+  setTimeout(() => {
+    eventLockRef.current = false;
+  }, 400);
 
-// 🚫 Ignore dashboard auto-redirect
-const path = window.location.hash || "";
-if (path === "/" || path === "#/") return;
+  // 🚫 Ignore dashboard auto-redirect
+  const path = window.location.hash || window.location.pathname || "";
+  if (path === "/" || path === "#/") return;
 
-// 📤 APP LEFT
-if (document.hidden) {
-// 🔒 Screen OFF → ignore
-if (document.hasFocus()) return;
+  // 📤 APP LEFT
+  if (document.hidden) {
+    // 🔒 Screen OFF → ignore completely
+    if (document.hasFocus()) return;
 
-// 🚨 Real app exit  
-if (!didLogLeave.current) {  
-  didLogLeave.current = true;  
-  logIncident("left_app");  
-  startAlarm();  
-}  
-return;
+    if (!didLogLeave.current) {
+      didLogLeave.current = true;
+      logIncident("left_app");
+      startAlarm();
+    }
+    return;
+  }
 
-}
+  // 📥 APP RETURN
+  if (didLogLeave.current) {
+    didLogLeave.current = false;
+    stopAlarm();
 
-// 📥 APP RETURN
-if (didLogLeave.current) {
-didLogLeave.current = false;
-stopAlarm();
-
-const remainingTime = Math.max(0, getSessionEnd() - Date.now());  
-logIncident(`returned (Remaining: ${Math.floor(remainingTime / 1000)}s)`);  
-onReturn?.();  
-acquireWakeLock();
-
-}
+    const remainingTime = Math.max(0, getSessionEnd() - Date.now());
+    logIncident(`returned (Remaining: ${Math.floor(remainingTime / 1000)}s)`);
+    onReturn?.();
+    acquireWakeLock();
+  }
 };
 
 document.addEventListener("visibilitychange", handleVisibilityChange);  

@@ -1,3 +1,4 @@
+import { logStudyActivity } from "../utils/activityLogger";
 import React, { useState } from "react";
 import { BookOpen, Search, X, PlayCircle, GraduationCap, Lock } from "lucide-react";
 
@@ -108,7 +109,8 @@ const StudySearch: React.FC = () => {
       {/* Results Grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "20px", maxWidth: "1100px", margin: "0 auto" }}>
         {videos.map((video) => (
-          <div key={video.id.videoId} onClick={() => setSelectedVideoId(video.id.videoId)} style={cardStyle}>
+          <div key={video.id.videoId} onClick={() => {logStudyActivity("Video", `Bache ne video dekhi: ${video.snippet.title}`); 
+                                                      setSelectedVideoId(video.id.videoId)}} style={cardStyle}>
             <div style={{ position: "relative" }}>
               <img src={video.snippet.thumbnails.medium.url} alt="thumbnail" style={{ width: "100%", height: "160px", objectFit: "cover" }} />
               <div style={playIconStyle}><PlayCircle size={40} color="white" /></div>

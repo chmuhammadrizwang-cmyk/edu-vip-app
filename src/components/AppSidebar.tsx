@@ -23,6 +23,7 @@ const AppSidebar = ({ open, onClose }: AppSidebarProps) => {
   const location = useLocation();
   const [showPin, setShowPin] = useState(false);
   const [pendingUrl, setPendingUrl] = useState("");
+  const [showStudySearch, setShowStudySearch] = useState(false);
 
   const handleNav = (item: typeof navItems[0]) => {
     if ((item as any).pinProtected && isStudyActive()) {
@@ -86,7 +87,22 @@ const AppSidebar = ({ open, onClose }: AppSidebarProps) => {
                     </button>
                   );
                 })}
+                <button
+  onClick={() => setShowStudySearch(true)}
+  className="w-full text-left px-4 py-2 rounded hover:bg-muted"
+>
+  📚 Study Search
+</button>
               </nav>
+              {showStudySearch && (
+  <div className="mt-4 p-3 border-t">
+    <input
+      type="text"
+      placeholder="Class, Subject, Topic search karein"
+      className="w-full px-3 py-2 border rounded"
+    />
+  </div>
+)}
             </motion.aside>
           </>
         )}

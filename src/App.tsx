@@ -12,6 +12,7 @@ import Chat from "./pages/Chat";
 import PuzzleGame from "./pages/PuzzleGame";
 import Incidents from "./pages/Incidents";
 import ParentalSecurity from "./pages/ParentalSecurity";
+import StudySearch from "./pages/StudySearch";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,6 +35,7 @@ const App = () => {
             <Route path="/puzzle" element={<PuzzleGame />} />
             <Route path="/incidents" element={<Incidents />} />
             <Route path="/parental-security" element={<ParentalSecurity />} />
+            <Route path="/study-search" element={<StudySearch />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </HashRouter>

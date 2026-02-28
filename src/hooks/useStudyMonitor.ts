@@ -1,18 +1,20 @@
 import { useEffect, useRef, useCallback } from "react";
 
 /**
- * STABLE Study Monitor Hook
- * - Handles screen off, app switch, and mobile-friendly pagehide/pageshow events.
- * - Ensures logs and alarms fire only once per leave/return.
+ * ULTIMATE STUDY MONITOR HOOK
+ * Features: Refresh Protection, Duration Calculation, No Duplicate Logs, Voice & Audio Alarm.
  */
 export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) => {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const checkTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const wakeLockRef = useRef<any>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  
+  // Logical Flags
   const didLogLeave = useRef(false);
   const eventLockRef = useRef(false);
+  const isRefreshing = useRef(false);
+  const leaveTimeRef = useRef<number | null>(null); // Time tracking ke liye
 
   const getSessionEnd = () => Number(localStorage.getItem("edu_study_session_end") || 0);
   const isActive = () => getSessionEnd() > 0 && Date.now() < getSessionEnd();
@@ -28,44 +30,31 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
     intervalRef.current = null;
     workerRef.current?.postMessage({ type: "STOP" });
     speechSynthesis.cancel();
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.ready.then((reg) => {
-        reg.active?.postMessage({ type: "STOP_ALARM_LOOP" });
-      });
-    }
   }, []);
 
   const warnUser = useCallback(() => {
     const username = localStorage.getItem("study_guard_name") || "Student";
     speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(`${username}, stop wasting time! Go back to your studies immediately!`);
-    u.rate = 0.9;
-    u.pitch = 1.1;
-    const voices = speechSynthesis.getVoices();
-    const preferred = voices.find(v => v.name.includes("Google US English") || v.lang.startsWith("en"));
-    if (preferred) u.voice = preferred;
+    const u = new SpeechSynthesisUtterance(`${username}, stop wasting time! Go back to your studies!`);
+    u.rate = 1.0;
     speechSynthesis.speak(u);
 
     try {
-      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
       const ctx = audioCtxRef.current;
-      if (ctx.state === "suspended") ctx.resume();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.frequency.value = 880;
-      osc.type = "square";
-      gain.gain.value = 0.7;
       osc.start();
       setTimeout(() => osc.stop(), 500);
-    } catch (e) { console.error(e); }
+    } catch (e) {}
   }, []);
 
   const startAlarm = useCallback(() => {
     if (!intervalRef.current) {
       warnUser();
-      workerRef.current?.postMessage({ type: "START", interval: 10000 });
       intervalRef.current = setInterval(() => {
         if (!isActive()) { stopAlarm(); return; }
         if (document.hidden || !document.hasFocus()) warnUser();
@@ -76,53 +65,75 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
 
   const acquireWakeLock = useCallback(async () => {
     try { if ("wakeLock" in navigator) wakeLockRef.current = await (navigator as any).wakeLock.request("screen"); }
-    catch (e) { console.error("WakeLock Error:", e); }
+    catch (e) {}
   }, []);
 
   useEffect(() => {
-    try { audioCtxRef.current = new AudioContext(); } catch {}
-    try {
-      workerRef.current = new Worker("/alarm-worker.js");
-      workerRef.current.onmessage = (e) => {
-        if (e.data.type === "TICK" && isActive() && (document.hidden || !document.hasFocus())) warnUser();
-      };
-    } catch {}
-
-    if (isActive()) acquireWakeLock();
+    // Refresh detection
+    const markRefresh = () => {
+      isRefreshing.current = true;
+      sessionStorage.setItem("study_is_refreshing", "true");
+    };
 
     const handleLeave = () => {
-      if (!isActive() || eventLockRef.current) return;
-      const path = window.location.hash || window.location.pathname || "";
-      if (path === "/" || path === "#/") return;
+      // Logic Check: Session active ho, lock na ho, aur refresh na ho raha ho
+      if (!isActive() || eventLockRef.current || isRefreshing.current) return;
 
       if (!didLogLeave.current) {
         eventLockRef.current = true;
         didLogLeave.current = true;
-        logIncident("left_app");
+        
+        leaveTimeRef.current = Date.now(); // Leave time save kiya
+        logIncident("Left App / Switched Tab");
         startAlarm();
-        setTimeout(() => { eventLockRef.current = false; }, 500);
+
+        // Lock for 1 second to prevent duplicate logs from multiple events
+        setTimeout(() => { eventLockRef.current = false; }, 1000);
       }
     };
 
     const handleReturn = () => {
       if (!isActive() || eventLockRef.current) return;
+      
+      // Agar refresh ke baad page khula hai, to alarm band karo aur log mat karo
+      if (sessionStorage.getItem("study_is_refreshing") === "true") {
+        sessionStorage.removeItem("study_is_refreshing");
+        stopAlarm();
+        return;
+      }
+
       if (didLogLeave.current) {
         eventLockRef.current = true;
         didLogLeave.current = false;
         stopAlarm();
-        const remaining = Math.max(0, getSessionEnd() - Date.now());
-        logIncident(`returned (Remaining: ${Math.floor(remaining / 1000)}s)`);
+
+        // Calculate Duration
+        let durationMsg = "Unknown";
+        if (leaveTimeRef.current) {
+          const diffInSecs = Math.floor((Date.now() - leaveTimeRef.current) / 1000);
+          durationMsg = diffInSecs >= 60 
+            ? `${Math.floor(diffInSecs / 60)}m ${diffInSecs % 60}s` 
+            : `${diffInSecs}s`;
+        }
+
+        logIncident(`Returned (Time wasted: ${durationMsg})`);
         onReturn?.();
         acquireWakeLock();
-        setTimeout(() => { eventLockRef.current = false; }, 500);
+
+        setTimeout(() => { eventLockRef.current = false; }, 1000);
       }
     };
 
+    // Event Listeners
+    window.addEventListener("beforeunload", markRefresh);
     window.addEventListener("pagehide", handleLeave);
     window.addEventListener("pageshow", handleReturn);
-    document.addEventListener("visibilitychange", () => { document.hidden ? handleLeave() : handleReturn(); });
+    document.addEventListener("visibilitychange", () => {
+      document.hidden ? handleLeave() : handleReturn();
+    });
 
-    checkTimerRef.current = setInterval(() => {
+    // Timer Check (Every 1 second)
+    const timerInterval = setInterval(() => {
       if (isActive() && Date.now() >= getSessionEnd()) {
         localStorage.removeItem("edu_study_session_end");
         stopAlarm();
@@ -131,12 +142,11 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
     }, 1000);
 
     return () => {
+      window.removeEventListener("beforeunload", markRefresh);
       window.removeEventListener("pagehide", handleLeave);
       window.removeEventListener("pageshow", handleReturn);
-      document.removeEventListener("visibilitychange", handleLeave);
-      if (checkTimerRef.current) clearInterval(checkTimerRef.current);
+      clearInterval(timerInterval);
       stopAlarm();
-      workerRef.current?.terminate();
     };
-  }, [startAlarm, stopAlarm, onTimerEnd, onReturn, acquireWakeLock, warnUser, logIncident]);
+  }, [startAlarm, stopAlarm, onTimerEnd, onReturn, acquireWakeLock, logIncident]);
 };

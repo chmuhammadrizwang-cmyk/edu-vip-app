@@ -1,3 +1,4 @@
+import { logStudyActivity } from "@/Utils/activityLogger";
 import React, { useState, useEffect } from "react";
 import AppHeader from "@/components/AppHeader";
 import AppSidebar from "@/components/AppSidebar";

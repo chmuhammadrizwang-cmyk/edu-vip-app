@@ -1,24 +1,21 @@
 import { useEffect, useRef, useCallback } from "react";
 
 export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) => {
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const didLogLeave = useRef(false);
   const leaveTimeRef = useRef<number | null>(null);
 
   const getSessionEnd = () => Number(localStorage.getItem("edu_study_session_end") || 0);
-  const isActive = () => getSessionEnd() > 0 && Date.now() < getSessionEnd();
-
-  // --- PAKKA HAL: THROTTLE FUNCTION ---
-  const canLogNow = () => {
-    const lastLogTime = Number(localStorage.getItem("last_log_timestamp") || 0);
-    const now = Date.now();
-    if (now - lastLogTime < 3000) return false; // 3 second ka sakht lock
-    localStorage.setItem("last_log_timestamp", now.toString());
-    return true;
-  };
+  const isActive = useCallback(() => {
+    const end = getSessionEnd();
+    return end > 0 && Date.now() < end;
+  }, []);
 
   const logIncident = useCallback((type: string) => {
-    if (!canLogNow()) return; 
+    // 3 second ka sakht lock taake duplicate logs na banen
+    const lastLogTime = Number(localStorage.getItem("last_log_timestamp") || 0);
+    if (Date.now() - lastLogTime < 3000) return;
+    localStorage.setItem("last_log_timestamp", Date.now().toString());
 
     const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
     incidents.push({ type, timestamp: new Date().toISOString() });
@@ -26,38 +23,40 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
   }, []);
 
   const stopAlarm = useCallback(() => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = null;
+    if (alarmIntervalRef.current) {
+      clearInterval(alarmIntervalRef.current);
+      alarmIntervalRef.current = null;
+    }
     speechSynthesis.cancel();
   }, []);
 
   const warnUser = useCallback(() => {
+    if (!isActive()) return;
     const username = localStorage.getItem("study_guard_name") || "Student";
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(`${username}, stop wasting time! Go back to your studies!`);
     speechSynthesis.speak(u);
-  }, []);
+  }, [isActive]);
 
   const startAlarm = useCallback(() => {
-    if (!intervalRef.current) {
-      warnUser();
-      intervalRef.current = setInterval(() => {
-        if (!isActive()) { stopAlarm(); return; }
-        if (document.hidden || !document.hasFocus()) warnUser();
-        else stopAlarm();
-      }, 10000);
-    }
-  }, [warnUser, stopAlarm]);
+    if (alarmIntervalRef.current) return;
+    warnUser(); // Pehli dafa foran
+    alarmIntervalRef.current = setInterval(() => {
+      if (!isActive()) stopAlarm();
+      else if (document.hidden || !document.hasFocus()) warnUser();
+      else stopAlarm();
+    }, 10000); // Har 10 second baad repeat
+  }, [warnUser, stopAlarm, isActive]);
 
   useEffect(() => {
     const handleLeave = () => {
-      if (sessionStorage.getItem("study_is_refreshing") === "true") return;
-      if (!isActive() || didLogLeave.current) return;
-
-      didLogLeave.current = true;
-      leaveTimeRef.current = Date.now();
-      logIncident("Student Left App");
-      startAlarm();
+      if (!isActive() || sessionStorage.getItem("study_is_refreshing") === "true") return;
+      if (!didLogLeave.current) {
+        didLogLeave.current = true;
+        leaveTimeRef.current = Date.now();
+        logIncident("Student Left App");
+        startAlarm();
+      }
     };
 
     const handleReturn = () => {
@@ -66,32 +65,23 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
         stopAlarm();
         return;
       }
-
       if (didLogLeave.current) {
         didLogLeave.current = false;
         stopAlarm();
-
         let durationMsg = "Short time";
         if (leaveTimeRef.current) {
           const diff = Math.floor((Date.now() - leaveTimeRef.current) / 1000);
-          durationMsg = diff > 60 ? `${Math.floor(diff/60)}m ${diff%60}s` : `${diff}s`;
+          durationMsg = diff >= 60 ? `${Math.floor(diff / 60)}m ${diff % 60}s` : `${diff}s`;
         }
-
         logIncident(`Returned (Stayed out: ${durationMsg})`);
-        onReturn?.();
+        onReturn?.(); // App.tsx mein overlay trigger karega
       }
     };
 
-    const handleBeforeUnload = () => {
-      sessionStorage.setItem("study_is_refreshing", "true");
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("beforeunload", () => sessionStorage.setItem("study_is_refreshing", "true"));
     window.addEventListener("pagehide", handleLeave);
     window.addEventListener("pageshow", handleReturn);
-    document.addEventListener("visibilitychange", () => {
-      document.hidden ? handleLeave() : handleReturn();
-    });
+    document.addEventListener("visibilitychange", () => document.hidden ? handleLeave() : handleReturn());
 
     const timerInterval = setInterval(() => {
       if (isActive() && Date.now() >= getSessionEnd()) {
@@ -102,11 +92,11 @@ export const useStudyMonitor = (onTimerEnd?: () => void, onReturn?: () => void) 
     }, 1000);
 
     return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("pagehide", handleLeave);
       window.removeEventListener("pageshow", handleReturn);
       clearInterval(timerInterval);
+      stopAlarm();
     };
-  }, [logIncident, startAlarm, stopAlarm, onTimerEnd, onReturn]);
+  }, [isActive, logIncident, startAlarm, stopAlarm, onTimerEnd, onReturn]);
 };
-            
+        

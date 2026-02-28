@@ -1,3 +1,4 @@
+import { logStudyActivity } from "../utils/activityLogger";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -31,7 +32,10 @@ const Chat = () => {
     toast.success("You are free now! 🎉");
   }, []);
 
-  useStudyMonitor(onTimerEnd, triggerOverlay);
+  useStudyMonitor(onTimerEnd, () => {
+  triggerOverlay();
+  logStudyActivity("System", "Bacha wapis parhai par aa gaya (Focus Restored)");
+});
 
   // Countdown timer
   useEffect(() => {
@@ -70,7 +74,7 @@ const Chat = () => {
     let backPressCount = 0;
     let backPressTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const handlePopState = (e: PopStateEvent) => {
+        const handlePopState = (e: PopStateEvent) => {
       const endStr = localStorage.getItem("edu_study_session_end");
       if (endStr && Date.now() < Number(endStr)) {
         e.preventDefault();
@@ -78,8 +82,9 @@ const Chat = () => {
 
         backPressCount++;
 
-        // If user presses back 3+ times quickly, force exit to about:blank and log incident
+        // Agar bacha 3 baar back dabaye to log bany aur bahar nikal dy
         if (backPressCount >= 3) {
+          logStudyActivity("Security", "Forced exit attempt! System closed the app.");
           const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
           incidents.push({ type: "tab_leave", timestamp: new Date().toISOString(), reason: "forced_back_exit" });
           localStorage.setItem("study_guard_incidents", JSON.stringify(incidents));
@@ -87,11 +92,11 @@ const Chat = () => {
           return;
         }
 
-        // Reset count after 2 seconds
+        // Timer ko reset karo agar bacha aram se back dabaye
         if (backPressTimer) clearTimeout(backPressTimer);
         backPressTimer = setTimeout(() => { backPressCount = 0; }, 2000);
 
-        // Silently re-lock
+        // Screen ko dubara lock karo
         lockHistory();
       }
     };
@@ -197,11 +202,14 @@ const Chat = () => {
     setShowPin(false);
     localStorage.removeItem("edu_study_session_end");
     setStudyActive(false);
+    logStudyActivity("Session", "Study session ended manually via PIN.");
     toast.success("Study session ended.");
   };
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
+logStudyActivity("Question", input.trim()); 
+    
     const userMsg: Msg = { role: "user", content: input.trim() };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);

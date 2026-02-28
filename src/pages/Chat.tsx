@@ -1,4 +1,4 @@
-import { logStudyActivity } from "@/utils/activityLogger";
+import { logStudyActivity } from "@/Utils/activityLogger";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";

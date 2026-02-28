@@ -1,4 +1,4 @@
-import { logStudyActivity } from "@/utils/activityLogger";
+import { logStudyActivity } from "@/Utils/activityLogger";
 import React, { useState } from "react";
 import { BookOpen, Search, X, PlayCircle, GraduationCap, Lock } from "lucide-react";
 

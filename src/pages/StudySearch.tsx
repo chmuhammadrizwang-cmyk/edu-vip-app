@@ -1,79 +1,149 @@
-// File: ./pages/StudySearch.tsx
-import { useState } from "react";
+import React, { useState } from "react";
+import { BookOpen } from "lucide-react";
 
-const classes = ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7", "Class 8", "Class 9", "Class 10", "Class 11", "Class 12"];
-const subjects = ["Math", "Physics", "Chemistry", "Biology", "English", "Urdu", "Computer"];
+// 1. Interface (Sahi hai)
+interface VideoSnippet {
+  id: { videoId: string };
+  snippet: {
+    title: string;
+    thumbnails: { medium: { url: string } };
+    channelTitle: string;
+  };
+}
 
-const StudySearch = () => {
-  const [selectedClass, setSelectedClass] = useState("");
-  const [selectedSubject, setSelectedSubject] = useState("");
-  const [topic, setTopic] = useState("");
-  const [results, setResults] = useState<string[]>([]);
+const StudySearch: React.FC = () => {
+  const [className, setClassName] = useState("");
+  const [subject, setSubject] = useState("");
+  
+  // FIXED: Yahan interface specify karna zaroori hai
+  const [videos, setVideos] = useState<VideoSnippet[]>([]); 
+  const [loading, setLoading] = useState(false);
 
-  const handleSearch = () => {
-    // Filhal basic mock results, future vich YouTube API ya local data add kar sakde ho
-    if (!selectedClass || !selectedSubject || !topic) {
-      alert("Please select class, subject and enter topic");
-      return;
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!className || !subject) return;
+
+    setLoading(true);
+
+    // Note: Is key ko .env file mein rakhein
+    const API_KEY = "AIzaSyCrugpInDzka4F78dDB5yOCLLyXkGDeuec";
+    const query = `${className} ${subject} lesson tutorial chapter class`;
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=12&q=${encodeURIComponent(
+      query
+    )}&type=video&key=${API_KEY}`;
+
+    try {
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      // Check agar data sahi mila hai
+      if (data.items) {
+        setVideos(data.items);
+      } else {
+        alert("No videos found or API limit reached.");
+      }
+    } catch (error) {
+      console.error("Search error:", error);
+      alert("Something went wrong!");
+    } finally {
+      setLoading(false);
     }
-    setResults([
-      `${selectedClass} - ${selectedSubject} - ${topic} Video 1`,
-      `${selectedClass} - ${selectedSubject} - ${topic} Video 2`,
-      `${selectedClass} - ${selectedSubject} - ${topic} Video 3`,
-    ]);
   };
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">📚 Study Search</h1>
+    // FIXED: Main container wrapper zaroori hai
+    <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "20px", fontFamily: "Arial, sans-serif" }}>
+      
+      {/* Header */}
+      <header style={{ textAlign: "center", marginBottom: "40px" }}>
+        <h1 style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px", fontSize: "2.5rem", color: "#1e293b" }}>
+          <BookOpen size={36} color="#2563eb" /> StudySearch
+        </h1>
+        <p style={{ color: "#64748b" }}>Search lessons by Class & Subject only.</p>
+      </header>
 
-      <div className="flex flex-col gap-4 max-w-md">
-        <select
-          value={selectedClass}
-          onChange={(e) => setSelectedClass(e.target.value)}
-          className="px-3 py-2 border rounded"
-        >
-          <option value="">Select Class</option>
-          {classes.map((cls) => (
-            <option key={cls} value={cls}>{cls}</option>
-          ))}
-        </select>
-
-        <select
-          value={selectedSubject}
-          onChange={(e) => setSelectedSubject(e.target.value)}
-          className="px-3 py-2 border rounded"
-        >
-          <option value="">Select Subject</option>
-          {subjects.map((sub) => (
-            <option key={sub} value={sub}>{sub}</option>
-          ))}
-        </select>
-
+      {/* Search Form */}
+      <form
+        onSubmit={handleSearch}
+        style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "40px" }}
+      >
         <input
           type="text"
-          placeholder="Enter Topic"
-          value={topic}
-          onChange={(e) => setTopic(e.target.value)}
-          className="px-3 py-2 border rounded"
+          placeholder="Class (e.g. 10th)"
+          value={className}
+          onChange={(e) => setClassName(e.target.value)}
+          style={{ flex: 1, padding: "12px", borderRadius: "8px", border: "1px solid #ddd", minWidth: "200px" }}
         />
-
+        <input
+          type="text"
+          placeholder="Subject (e.g. Biology)"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          style={{ flex: 1, padding: "12px", borderRadius: "8px", border: "1px solid #ddd", minWidth: "200px" }}
+        />
         <button
-          onClick={handleSearch}
-          className="px-4 py-2 bg-primary text-white rounded hover:bg-primary/90"
+          type="submit"
+          disabled={loading}
+          style={{
+            padding: "12px 24px",
+            borderRadius: "8px",
+            border: "none",
+            backgroundColor: loading ? "#94a3b8" : "#2563eb",
+            color: "white",
+            cursor: loading ? "not-allowed" : "pointer",
+            fontWeight: "bold",
+          }}
         >
-          Search
+          {loading ? "Searching..." : "Find Lessons"}
         </button>
+      </form>
+
+      {/* Video Results Grid */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+          gap: "20px",
+        }}
+      >
+        {videos.map((video) => (
+          <a
+            key={video.id.videoId}
+            href={`https://www.youtube.com/watch?v=${video.id.videoId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              textDecoration: "none",
+              color: "inherit",
+              border: "1px solid #eee",
+              borderRadius: "12px",
+              overflow: "hidden",
+              transition: "transform 0.2s",
+              display: "block", // Ensure link takes full space
+              backgroundColor: "#fff"
+            }}
+            onMouseOver={(e) => (e.currentTarget.style.transform = "scale(1.02)")}
+            onMouseOut={(e) => (e.currentTarget.style.transform = "scale(1)")}
+          >
+            <img
+              src={video.snippet.thumbnails.medium.url}
+              alt={video.snippet.title}
+              style={{ width: "100%", height: "180px", objectFit: "cover" }}
+            />
+            <div style={{ padding: "15px" }}>
+              <h4 style={{ margin: "0 0 10px 0", fontSize: "1rem", color: "#1e293b", height: "45px", overflow: "hidden" }}>
+                {video.snippet.title}
+              </h4>
+              <p style={{ fontSize: "0.85rem", color: "#64748b" }}>{video.snippet.channelTitle}</p>
+            </div>
+          </a>
+        ))}
       </div>
 
-      {results.length > 0 && (
-        <div className="mt-6">
-          <h2 className="text-xl font-semibold mb-2">Results:</h2>
-          <ul className="list-disc list-inside">
-            {results.map((res, i) => (
-              <li key={i}>{res}</li>
-            ))}
-          </ul>
+      {/* Empty State */}
+      {!loading && videos.length === 0 && (
+        <div style={{ textAlign: "center", color: "#94a3b8", marginTop: "50px" }}>
+          No videos to show. Enter details and search.
         </div>
       )}
     </div>

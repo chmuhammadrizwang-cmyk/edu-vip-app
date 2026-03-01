@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HashRouter, Routes, Route } from "react-router-dom";
 import StudyGuardWrapper from "./components/StudyGuardWrapper";
 
-// Saare Pages
+// Saare Pages confirm karein ke sahi imported hain
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import SettingsPage from "./pages/SettingsPage";
@@ -36,33 +36,41 @@ const App = () => {
         date: now.toDateString(),
         timestamp: now.toISOString()
       };
-      // Duplicate logs rokne ke liye check (agar aakhri log wahi hai to dobara na banaye)
-      if (diary.length > 0 && diary[0].content === message) return;
       
       localStorage.setItem("study_diary", JSON.stringify([newLog, ...diary]));
     };
 
+    // Time track karne ke liye variable
+    let leaveTime: number | null = null;
+
     const handleVisibility = () => {
       if (document.hidden) {
-        saveActivityLog("🚨 ALERT: Student minimized the app or switched tabs!");
+        // 1. Left App Log
+        leaveTime = Date.now();
+        saveActivityLog("🚨 STUDENT LEFT APP");
       } else {
-        saveActivityLog("✅ LOG: Student returned to the study session.");
+        // 2. Return Log with Duration
+        let durationMsg = "✅ STUDENT RETURNED";
+        if (leaveTime) {
+          const diff = Math.floor((Date.now() - leaveTime) / 1000);
+          const mins = Math.floor(diff / 60);
+          const secs = diff % 60;
+          durationMsg = `✅ RETURNED (STAYED OUT: ${mins}M ${secs}S)`;
+        }
+        saveActivityLog(durationMsg);
+
         // Wapis aane par alert dikhayen
         setShowFocusAlert(true);
         setTimeout(() => setShowFocusAlert(false), 2500);
       }
     };
 
-    // Tab Change & Minimize Monitor
+    // Tab Change Monitor
     document.addEventListener("visibilitychange", handleVisibility);
     
-    // Focus Loss (Jab bacha notifications check kare ya browser se bahir click kare)
-    const handleBlur = () => saveActivityLog("⚠️ WARNING: App focus lost! (Suspected multitasking)");
-    window.addEventListener("blur", handleBlur);
-
+    // Extra blur/focus logs delete kar diye taake sirf 2 main logs bany
     return () => {
       document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("blur", handleBlur);
     };
   }, []);
   // --- 🛠️ UNIVERSAL TRACKING LOGIC END ---
@@ -112,3 +120,4 @@ const App = () => {
 };
 
 export default App;
+      

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"; // useEffect add kiya
+import { useState, useEffect } from "react";
 import { useStudyMonitor } from "./hooks/useStudyMonitor";
 import { Toaster } from "./components/ui/toaster";
 import { Toaster as SonnerToaster } from "./components/ui/sonner";
@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HashRouter, Routes, Route } from "react-router-dom";
 import StudyGuardWrapper from "./components/StudyGuardWrapper";
 
-// Saare Pages confirm karein ke sahi imported hain
+// Saare Pages
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import SettingsPage from "./pages/SettingsPage";
@@ -23,11 +23,21 @@ const queryClient = new QueryClient();
 const App = () => {
   const [showFocusAlert, setShowFocusAlert] = useState(false);
 
-  // --- 🛠️ UNIVERSAL TRACKING LOGIC START ---
+  // --- 🛠️ ELITE MONITORING LOGIC START ---
   useEffect(() => {
+    // 1. Refresh detect karne ke liye variable
+    let isRefreshing = false;
+    window.onbeforeunload = () => { isRefreshing = true; };
+
     const saveActivityLog = (message: string, type: string = "SECURITY") => {
+      if (isRefreshing) return; // Refresh ho raha ho to log na banaye
+      
       const diary = JSON.parse(localStorage.getItem("study_diary") || "[]");
       const now = new Date();
+      
+      // Duplicate entry rokne ke liye
+      if (diary.length > 0 && diary[0].content === message) return;
+
       const newLog = {
         id: Date.now(),
         type: type,
@@ -40,16 +50,36 @@ const App = () => {
       localStorage.setItem("study_diary", JSON.stringify([newLog, ...diary]));
     };
 
-    // Time track karne ke liye variable
+    // 2. Study Target Monitor (Exact Time aur Minutes ke sath)
+    const checkTarget = setInterval(() => {
+      const targetTime = localStorage.getItem("study_target_minutes");
+      const isStudying = localStorage.getItem("isStudying") === "true";
+      
+      if (isStudying && targetTime && localStorage.getItem("target_logged_val") !== targetTime) {
+        const now = new Date();
+        const startTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const msg = `🎯 TARGET SET: ${targetTime} Minutes study selected at ${startTime}`;
+        saveActivityLog(msg, "STUDY");
+        localStorage.setItem("target_logged_val", targetTime);
+      }
+      
+      // Agar study khatam ho jaye to flag reset karein
+      if (!isStudying) {
+        localStorage.removeItem("target_logged_val");
+      }
+    }, 1000);
+
     let leaveTime: number | null = null;
 
     const handleVisibility = () => {
+      // 3. Strict Mode: Sirf tab log bane jab study start ho
+      const isStudying = localStorage.getItem("isStudying") === "true";
+      if (!isStudying || isRefreshing) return;
+
       if (document.hidden) {
-        // 1. Left App Log
         leaveTime = Date.now();
         saveActivityLog("🚨 STUDENT LEFT APP");
       } else {
-        // 2. Return Log with Duration
         let durationMsg = "✅ STUDENT RETURNED";
         if (leaveTime) {
           const diff = Math.floor((Date.now() - leaveTime) / 1000);
@@ -59,23 +89,20 @@ const App = () => {
         }
         saveActivityLog(durationMsg);
 
-        // Wapis aane par alert dikhayen
         setShowFocusAlert(true);
         setTimeout(() => setShowFocusAlert(false), 2500);
       }
     };
 
-    // Tab Change Monitor
     document.addEventListener("visibilitychange", handleVisibility);
     
-    // Extra blur/focus logs delete kar diye taake sirf 2 main logs bany
     return () => {
       document.removeEventListener("visibilitychange", handleVisibility);
+      clearInterval(checkTarget);
     };
   }, []);
-  // --- 🛠️ UNIVERSAL TRACKING LOGIC END ---
+  // --- 🛠️ ELITE MONITORING LOGIC END ---
 
-  // Global Monitor (Existing hooks)
   useStudyMonitor(undefined, () => {
     setShowFocusAlert(true);
     setTimeout(() => setShowFocusAlert(false), 3000);
@@ -87,7 +114,6 @@ const App = () => {
         <Toaster />
         <SonnerToaster />
 
-        {/* Focus Alert Overlay - Elite Glassmorphism */}
         {showFocusAlert && (
           <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/95 backdrop-blur-2xl">
             <div className="p-10 rounded-full bg-amber-500/10 border-2 border-amber-500/50 animate-pulse mb-8 shadow-[0_0_50px_rgba(245,158,11,0.3)]">
@@ -120,4 +146,3 @@ const App = () => {
 };
 
 export default App;
-      

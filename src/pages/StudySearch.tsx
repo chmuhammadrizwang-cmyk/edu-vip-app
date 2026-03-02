@@ -1,14 +1,16 @@
 import { logStudyActivity } from "@/Utils/activityLogger";
 import React, { useState } from "react";
-import { BookOpen, Search, X, PlayCircle, GraduationCap, Lock } from "lucide-react";
+import { BookOpen, Search, X, PlayCircle, GraduationCap, Lock, Globe, Youtube, Info } from "lucide-react";
+import { toast } from "sonner";
 
-// --- 1. TypeScript Interface ---
+// --- TypeScript Interface ---
 interface VideoSnippet {
   id: { videoId: string };
   snippet: {
     title: string;
     thumbnails: { medium: { url: string } };
     channelTitle: string;
+    description: string;
   };
 }
 
@@ -17,144 +19,238 @@ const StudySearch: React.FC = () => {
   const [className, setClassName] = useState(""); 
   const [subject, setSubject] = useState("");
   const [topic, setTopic] = useState(""); 
+  const [medium, setMedium] = useState<"Urdu" | "English">("Urdu");
 
   // States for Data & UI
   const [videos, setVideos] = useState<VideoSnippet[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
 
-  // --- 2. Search Logic with Strict Filter ---
+  // --- Search Logic with Elite Filtering ---
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!className || !subject) {
-      alert("Please enter at least Class and Subject!");
+      toast.error("Please enter Class and Subject!");
       return;
     }
 
     setLoading(true);
+    // Note: API Key is sensitive, but keeping your original one as requested
     const API_KEY = "AIzaSyCrugpInDzka4F78dDB5yOCLLyXkGDeuec";
     
     /**
-     * STRICT FILTERING: 
-     * Humne query mein '-movie -song' wagera lagaya hai taake YouTube 
-     * entertainment content ko block kar de.
+     * ELITE FILTERING:
+     * 1. No Shorts: Hum 'videoDuration: long' use karenge.
+     * 2. Medium focus: Urdu ya English query mein add hoga.
+     * 3. Negative keywords: Songs, trailers block.
      */
-    const forbidden = "-movie -song -music -trailer -entertainment -gaming -funny";
-    const studyFocus = "educational lesson lecture tutorial full chapter";
+    const forbidden = "-shorts -music -song -trailer -funny -entertainment -movie -gaming -vlog";
+    const focusTags = "full lecture complete lesson classroom tutorial explanation";
     
-    const query = `${className} ${subject} ${topic} ${studyFocus} ${forbidden}`;
-    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=12&q=${encodeURIComponent(
+    // Yahan hum strict medium filter add kar rahe hain
+    const mediumQuery = medium === "Urdu" ? "Urdu Medium Hindi" : "English Medium CBSE IGCSE";
+    
+    const query = `${className} ${subject} ${topic} ${mediumQuery} ${focusTags} ${forbidden}`;
+    
+    // API URL with videoDuration=long to avoid Shorts
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=15&q=${encodeURIComponent(
       query
-    )}&type=video&key=${API_KEY}`;
+    )}&type=video&videoDuration=long&relevanceLanguage=en&safeSearch=strict&key=${API_KEY}`;
 
     try {
       const response = await fetch(url);
       const data = await response.json();
+      
       if (data.items && data.items.length > 0) {
         setVideos(data.items);
+        toast.success(`Found ${data.items.length} elite lessons!`);
       } else {
         setVideos([]);
-        alert("No study material found. Please try different keywords.");
+        toast.error("No study material found. Try different keywords.");
       }
     } catch (error) {
       console.error("API Error:", error);
-      alert("Technical issue or API Limit reached.");
+      toast.error("Search limit reached or network issue.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: "#f0f4f8", fontFamily: "sans-serif", padding: "20px" }}>
+    <div className="min-h-screen bg-[#050505] text-gray-200 font-sans p-4 md:p-8">
       
-      {/* Header Section */}
-      <header style={{ textAlign: "center", marginBottom: "40px" }}>
-        <div style={{ backgroundColor: "#2563eb", width: "60px", height: "60px", borderRadius: "50%", display: "flex", justifyContent: "center", alignItems: "center", margin: "0 auto 15px" }}>
-          <GraduationCap size={35} color="white" />
+      {/* Elite Header */}
+      <header className="text-center mb-12 relative">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-blue-600/10 blur-[100px] rounded-full -z-10"></div>
+        <div className="inline-flex p-4 rounded-3xl bg-blue-600/10 border border-blue-500/20 mb-6 animate-pulse">
+          <GraduationCap size={40} className="text-blue-500" />
         </div>
-        <h1 style={{ fontSize: "2.5rem", fontWeight: "bold", color: "#1e293b", margin: "0" }}>
-          Study<span style={{ color: "#2563eb" }}>Search</span>
+        <h1 className="text-5xl font-black tracking-tighter mb-2">
+          Study<span className="text-blue-500 italic">Search</span>
+          <span className="text-[10px] bg-blue-500 text-white px-2 py-0.5 rounded ml-2 align-middle uppercase tracking-widest">Pro</span>
         </h1>
-        <p style={{ color: "#64748b", display: "flex", justifyContent: "center", alignItems: "center", gap: "5px" }}>
-          <Lock size={14} /> Safe Educational Environment Only
-        </p>
+        <div className="flex items-center justify-center gap-2 text-gray-500 text-sm font-bold uppercase tracking-[0.2em]">
+          <Lock size={14} className="text-green-500" /> Safe Environment Active
+        </div>
       </header>
 
-      {/* 3-Filter VIP Search Form */}
-      <div style={{ maxWidth: "850px", margin: "0 auto 40px", backgroundColor: "white", padding: "25px", borderRadius: "20px", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)" }}>
-        <form onSubmit={handleSearch} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "15px" }}>
-          
-          <div style={inputBoxStyle}>
-            <label style={labelStyle}>Class</label>
-            <input type="text" placeholder="e.g. 9th Class" value={className} onChange={(e) => setClassName(e.target.value)} style={inputFieldStyle} />
+      {/* VIP Filter Box */}
+      <div className="max-w-4xl mx-auto mb-16 bg-[#0f0f0f] border border-[#1a1a1a] p-8 rounded-[40px] shadow-2xl relative overflow-hidden group">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 blur-3xl rounded-full"></div>
+        
+        <form onSubmit={handleSearch} className="relative z-10">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            
+            <div className="space-y-2">
+              <label className="text-xs font-black text-gray-500 uppercase tracking-widest ml-1">Class Level</label>
+              <input 
+                type="text" 
+                placeholder="e.g. 10th Class" 
+                value={className} 
+                onChange={(e) => setClassName(e.target.value)} 
+                className="w-full bg-black border border-[#222] p-4 rounded-2xl focus:border-blue-500 transition-all outline-none text-white font-bold"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-black text-gray-500 uppercase tracking-widest ml-1">Subject</label>
+              <input 
+                type="text" 
+                placeholder="e.g. Physics" 
+                value={subject} 
+                onChange={(e) => setSubject(e.target.value)} 
+                className="w-full bg-black border border-[#222] p-4 rounded-2xl focus:border-blue-500 transition-all outline-none text-white font-bold"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-black text-gray-500 uppercase tracking-widest ml-1">Topic (Sabq)</label>
+              <input 
+                type="text" 
+                placeholder="e.g. Newton Laws" 
+                value={topic} 
+                onChange={(e) => setTopic(e.target.value)} 
+                className="w-full bg-black border border-[#222] p-4 rounded-2xl focus:border-blue-500 transition-all outline-none text-white font-bold"
+              />
+            </div>
           </div>
 
-          <div style={inputBoxStyle}>
-            <label style={labelStyle}>Subject</label>
-            <input type="text" placeholder="e.g. Chemistry" value={subject} onChange={(e) => setSubject(e.target.value)} style={inputFieldStyle} />
-          </div>
+          {/* Medium Selector & Search Button */}
+          <div className="flex flex-col md:flex-row items-center gap-6">
+            <div className="flex bg-black p-1.5 rounded-2xl border border-[#222] w-full md:w-auto">
+              <button 
+                type="button"
+                onClick={() => setMedium("Urdu")}
+                className={`flex-1 md:px-8 py-3 rounded-xl text-xs font-black transition-all ${medium === "Urdu" ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20" : "text-gray-500 hover:text-gray-300"}`}
+              >
+                URDU MEDIUM
+              </button>
+              <button 
+                type="button"
+                onClick={() => setMedium("English")}
+                className={`flex-1 md:px-8 py-3 rounded-xl text-xs font-black transition-all ${medium === "English" ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20" : "text-gray-500 hover:text-gray-300"}`}
+              >
+                ENGLISH MEDIUM
+              </button>
+            </div>
 
-          <div style={inputBoxStyle}>
-            <label style={labelStyle}>Topic (Sabq)</label>
-            <input type="text" placeholder="e.g. Exercise 2.4" value={topic} onChange={(e) => setTopic(e.target.value)} style={inputFieldStyle} />
+            <button 
+              type="submit" 
+              disabled={loading} 
+              className="w-full md:flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 py-4 rounded-2xl text-white font-black tracking-widest shadow-xl shadow-blue-600/10 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+            >
+              {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><Search size={20} /> FIND ELITE LESSONS</>}
+            </button>
           </div>
-
-          <button type="submit" disabled={loading} style={btnStyle}>
-            {loading ? "Searching..." : "Find Lessons"}
-          </button>
         </form>
       </div>
 
-      {/* Results Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "20px", maxWidth: "1100px", margin: "0 auto" }}>
+      {/* Results Grid with Elite Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
         {videos.map((video) => (
-          <div key={video.id.videoId} onClick={() => {logStudyActivity("Video", `Bache ne video dekhi: ${video.snippet.title}`); 
-                                                      setSelectedVideoId(video.id.videoId)}} style={cardStyle}>
-            <div style={{ position: "relative" }}>
-              <img src={video.snippet.thumbnails.medium.url} alt="thumbnail" style={{ width: "100%", height: "160px", objectFit: "cover" }} />
-              <div style={playIconStyle}><PlayCircle size={40} color="white" /></div>
+          <div 
+            key={video.id.videoId} 
+            onClick={() => {
+              logStudyActivity("Video", `Video Watched: ${video.snippet.title}`); 
+              setSelectedVideoId(video.id.videoId);
+            }} 
+            className="group bg-[#0f0f0f] rounded-[35px] overflow-hidden border border-[#1a1a1a] hover:border-blue-500/50 transition-all duration-500 cursor-pointer shadow-2xl hover:translate-y-[-5px]"
+          >
+            <div className="relative aspect-video">
+              <img src={video.snippet.thumbnails.medium.url} alt="thumb" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <PlayCircle size={60} className="text-white drop-shadow-2xl" />
+              </div>
+              <div className="absolute bottom-3 right-3 bg-black/80 px-2 py-1 rounded text-[10px] font-bold text-blue-400 border border-blue-500/20 uppercase tracking-widest">
+                Elite Lesson
+              </div>
             </div>
-            <div style={{ padding: "15px" }}>
-              <h4 style={{ margin: "0 0 10px 0", fontSize: "0.95rem", color: "#1e293b", height: "2.6rem", overflow: "hidden" }}>{video.snippet.title}</h4>
-              <span style={{ fontSize: "0.8rem", color: "#2563eb", fontWeight: "bold" }}>{video.snippet.channelTitle}</span>
+            <div className="p-6">
+              <h4 className="text-gray-100 font-bold text-[15px] leading-tight mb-3 line-clamp-2 group-hover:text-blue-400 transition-colors">
+                {video.snippet.title}
+              </h4>
+              <div className="flex items-center gap-2 pt-4 border-t border-[#1a1a1a]">
+                <div className="w-6 h-6 rounded-full bg-blue-600/20 flex items-center justify-center">
+                  <Youtube size={12} className="text-blue-500" />
+                </div>
+                <span className="text-[11px] font-black text-gray-500 uppercase tracking-tighter">{video.snippet.channelTitle}</span>
+              </div>
             </div>
           </div>
         ))}
       </div>
 
-      {/* VIP Video Player Modal */}
+      {/* No Results Placeholder */}
+      {!loading && videos.length === 0 && (
+        <div className="text-center py-20 opacity-20">
+          <BookOpen size={80} className="mx-auto mb-4" />
+          <p className="text-xl font-bold italic tracking-tighter">Enter details to fetch premium lectures...</p>
+        </div>
+      )}
+
+      {/* Elite Video Modal */}
       {selectedVideoId && (
-        <div style={overlayStyle}>
-          <div style={modalStyle}>
-            <button onClick={() => setSelectedVideoId(null)} style={closeButtonStyle}><X size={32} /></button>
-            <div style={{ position: "relative", paddingBottom: "56.25%", height: 0 }}>
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[1000] flex items-center justify-center p-4 md:p-10 animate-in fade-in duration-300">
+          <div className="w-full max-w-5xl relative">
+            <button 
+              onClick={() => setSelectedVideoId(null)} 
+              className="absolute -top-16 right-0 text-white/50 hover:text-white transition-colors"
+            >
+              <X size={40} />
+            </button>
+            <div className="relative aspect-video rounded-[30px] overflow-hidden border border-white/10 shadow-[0_0_100px_rgba(37,99,235,0.2)]">
               <iframe
-                style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", borderRadius: "10px" }}
-                src={`https://www.youtube.com/embed/${selectedVideoId}?autoplay=1&rel=0`}
-                title="Study Video"
+                className="w-full h-full"
+                src={`https://www.youtube.com/embed/${selectedVideoId}?autoplay=1&rel=0&modestbranding=1`}
+                title="Elite Study Player"
                 frameBorder="0"
                 allow="autoplay; encrypted-media"
                 allowFullScreen
               ></iframe>
             </div>
+            <div className="mt-6 flex items-center gap-4 text-blue-500/60 font-black text-[10px] tracking-[0.5em] uppercase justify-center">
+              <Info size={14} /> Strict Educational Mode Active
+            </div>
           </div>
         </div>
       )}
+
+      {/* Rizwan Ashfaq Footer */}
+      <footer className="mt-24 mb-10 text-center">
+        <div className="inline-block relative group">
+          <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-cyan-400 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
+          <div className="relative px-12 py-6 bg-black rounded-full border border-blue-900/30 shadow-2xl">
+            <p className="text-[9px] font-black text-blue-600 tracking-[0.4em] uppercase mb-1">Architect</p>
+            <p className="text-2xl font-black bg-gradient-to-r from-blue-500 via-blue-100 to-blue-600 bg-clip-text text-transparent tracking-tighter">
+              Rizwan Ashfaq Web Developer
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 };
 
-// --- VIP Styles ---
-const inputBoxStyle = { display: "flex", flexDirection: "column" as const, gap: "5px" };
-const labelStyle = { fontSize: "0.8rem", fontWeight: "bold", color: "#475569" };
-const inputFieldStyle = { padding: "12px", borderRadius: "10px", border: "2px solid #e2e8f0", outline: "none", fontSize: "1rem" };
-const btnStyle = { backgroundColor: "#2563eb", color: "white", border: "none", borderRadius: "10px", fontWeight: "bold", cursor: "pointer", marginTop: "22px", height: "48px" };
-const cardStyle = { backgroundColor: "white", borderRadius: "15px", overflow: "hidden", cursor: "pointer", transition: "0.2s", border: "1px solid #e2e8f0" };
-const playIconStyle: React.CSSProperties = { position: "absolute", inset: 0, display: "flex", justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.2)" };
-const overlayStyle: React.CSSProperties = { position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.9)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000, padding: "20px" };
-const modalStyle = { width: "100%", maxWidth: "850px", position: "relative" as const };
-const closeButtonStyle: React.CSSProperties = { position: "absolute", top: "-45px", right: 0, color: "white", background: "none", border: "none", cursor: "pointer" };
-
 export default StudySearch;
-          
+                    

@@ -10,9 +10,8 @@ const Incidents = () => {
   const [showSecurityPrompt, setShowSecurityPrompt] = useState(false);
   const [inputCode, setInputCode] = useState("");
 
-  // --- FIX 1: Parental PIN Logic (Sync with your ParentalSecurity page) ---
+  // --- FIX 1: Parental PIN Logic ---
   const getSystemParentalCode = () => {
-    // Ye har us key ko check karega jo aapki app use kar rahi hai
     const savedPin = localStorage.getItem("study_guard_pin") || 
                      localStorage.getItem("parental_code") || 
                      localStorage.getItem("parentalCode") || 
@@ -52,23 +51,19 @@ const Incidents = () => {
       return;
     }
 
-    // .trim() lagaya taake mobile keyboard space ka masla na ho
     if (inputCode.trim() === activeCode.trim()) {
-      // 1. Logs Delete
+      // ✅ 1. Sirf purani history delete karein
       localStorage.removeItem("study_guard_incidents");
       localStorage.removeItem("study_diary");
       localStorage.removeItem("study_logged"); 
       
-      // 2. --- 🚨 SESSION KILL SWITCH ---
-      // Ye do lines monitoring ko pakka band kar dengi PIN dene ke baad
-      localStorage.removeItem("edu_study_duration");
-      localStorage.removeItem("last_logged_target");
-      localStorage.removeItem("edu_study_time");
+      // 🚨 FIX: Yahan se wo lines hata di hain jo session kill kar rahi thin.
+      // Ab PIN dene ke baad bhi Left/Return logs bante rahenge.
 
       setLogs([]);
       setShowSecurityPrompt(false);
       setInputCode("");
-      toast.success("Session Terminated & History Cleared");
+      toast.success("History Cleared! Monitoring is still Active.");
     } else {
       toast.error("Ghalt Code! Please use your real Parental PIN.");
       setInputCode("");
@@ -167,3 +162,4 @@ const Incidents = () => {
 };
 
 export default Incidents;
+    

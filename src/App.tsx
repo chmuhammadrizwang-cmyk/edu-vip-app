@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useStudyMonitor } from "./hooks/useStudyMonitor";
 import { Toaster } from "./components/ui/toaster";
 import { Toaster as SonnerToaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
@@ -30,7 +29,6 @@ const App = () => {
       if (isRefreshing) return;
       const diary = JSON.parse(localStorage.getItem("study_diary") || "[]");
       const now = new Date();
-      
       const newLog = {
         id: Date.now(),
         type: type,
@@ -39,7 +37,6 @@ const App = () => {
         date: now.toDateString(),
         timestamp: now.toISOString()
       };
-      
       if (diary.length > 0 && diary[0].content === message) return;
       localStorage.setItem("study_diary", JSON.stringify([newLog, ...diary]));
     };
@@ -47,9 +44,9 @@ const App = () => {
     let leaveTime: number | null = null;
 
     const handleVisibility = () => {
-      // --- 🚨 CONDITION: Sirf tab log bane jab Time Select ho chuka ho ---
-      const hasTarget = localStorage.getItem("last_logged_target");
-      if (!hasTarget || isRefreshing) return;
+      // --- 🚨 STRICT CHECK: Sirf tab log bane jab duration select ho ---
+      const hasDuration = localStorage.getItem("edu_study_duration");
+      if (!hasDuration || isRefreshing) return;
 
       if (document.hidden) {
         leaveTime = Date.now();
@@ -69,15 +66,16 @@ const App = () => {
       }
     };
 
-    // Study Target Tracker (Time & Date check)
+    // Study Target Tracker (Settings Page se sync)
     const targetInterval = setInterval(() => {
-      const target = localStorage.getItem("study_target_minutes");
-      // Agar user ne time select kiya hai aur wo pehle log nahi hua
-      if (target && localStorage.getItem("last_logged_target") !== target) {
+      const duration = localStorage.getItem("edu_study_duration");
+      const startTime = localStorage.getItem("edu_study_time");
+      
+      if (duration && localStorage.getItem("last_logged_target") !== duration + startTime) {
         const now = new Date();
-        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        saveActivityLog(`🎯 TARGET SET: ${target} Mins selected at ${timeStr}`, "STUDY");
-        localStorage.setItem("last_logged_target", target);
+        const logTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        saveActivityLog(`🎯 TARGET SET: ${duration} study starting at ${startTime || logTime}`, "STUDY");
+        localStorage.setItem("last_logged_target", (duration + startTime));
       }
     }, 2000);
 
@@ -88,27 +86,20 @@ const App = () => {
     };
   }, []);
 
-  useStudyMonitor(undefined, () => {
-    setShowFocusAlert(true);
-    setTimeout(() => setShowFocusAlert(false), 3000);
-  });
-
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
         <SonnerToaster />
-
         {showFocusAlert && (
-          <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/95 backdrop-blur-2xl">
-            <div className="p-10 rounded-full bg-amber-500/10 border-2 border-amber-500/50 animate-pulse mb-8 shadow-[0_0_50px_rgba(245,158,11,0.3)]">
-              <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/95 backdrop-blur-2xl px-6 text-center">
+            <div className="p-10 rounded-full bg-amber-500/10 border-2 border-amber-500/50 animate-pulse mb-8">
+              <svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             </div>
-            <h1 className="text-amber-500 text-7xl font-black uppercase tracking-tighter italic">Focus Locked</h1>
-            <p className="text-white mt-4 text-xl font-bold tracking-[0.5em] opacity-80 uppercase text-center px-4">Elite Monitoring Active</p>
+            <h1 className="text-amber-500 text-5xl font-black uppercase italic">Focus Locked</h1>
+            <p className="text-white mt-4 text-sm font-bold tracking-widest opacity-80 uppercase">Elite Monitoring Active</p>
           </div>
         )}
-
         <HashRouter>
           <StudyGuardWrapper>
             <Routes>
@@ -130,4 +121,3 @@ const App = () => {
 };
 
 export default App;
-            

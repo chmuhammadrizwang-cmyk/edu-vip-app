@@ -10,31 +10,27 @@ const Incidents = () => {
   const [showSecurityPrompt, setShowSecurityPrompt] = useState(false);
   const [inputCode, setInputCode] = useState("");
 
-  // --- FIX 1: Parental PIN Logic (0000 khatam) ---
+  // --- FIX 1: Parental PIN Logic (Sync with your ParentalSecurity page) ---
   const getSystemParentalCode = () => {
-    // Sirf wahi code uthayega jo aapne settings mein save kiya hai
-    const savedPin = localStorage.getItem("parental_code") || 
+    // Ye har us key ko check karega jo aapki app use kar rahi hai
+    const savedPin = localStorage.getItem("study_guard_pin") || 
+                     localStorage.getItem("parental_code") || 
                      localStorage.getItem("parentalCode") || 
                      localStorage.getItem("user_pin");
     return savedPin; 
   };
 
-  // --- FIX 2: Double Logs Filter ---
   const loadLogs = () => {
     const security = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
     const diary = JSON.parse(localStorage.getItem("study_diary") || "[]");
-    
-    // Dono arrays ko mix karein
     const allLogs = [...security, ...diary];
 
-    // Filter lagaya taake duplicate content aur time wale logs dobara na ayein
     const uniqueLogs = allLogs.filter((log, index, self) =>
       index === self.findIndex((t) => (
         t.content === log.content && t.time === log.time
       ))
     );
 
-    // Latest logs ko upar dikhane ke liye sort karein
     const sorted = uniqueLogs.sort((a, b) => 
       new Date(b.timestamp || b.id).getTime() - new Date(a.timestamp || a.id).getTime()
     );
@@ -56,15 +52,23 @@ const Incidents = () => {
       return;
     }
 
-    // Sirf asli PIN check hoga
-    if (inputCode === activeCode) {
+    // .trim() lagaya taake mobile keyboard space ka masla na ho
+    if (inputCode.trim() === activeCode.trim()) {
+      // 1. Logs Delete
       localStorage.removeItem("study_guard_incidents");
       localStorage.removeItem("study_diary");
-      localStorage.removeItem("study_logged"); // Study Start log reset
+      localStorage.removeItem("study_logged"); 
+      
+      // 2. --- 🚨 SESSION KILL SWITCH ---
+      // Ye do lines monitoring ko pakka band kar dengi PIN dene ke baad
+      localStorage.removeItem("edu_study_duration");
+      localStorage.removeItem("last_logged_target");
+      localStorage.removeItem("edu_study_time");
+
       setLogs([]);
       setShowSecurityPrompt(false);
       setInputCode("");
-      toast.success("Elite History Cleared Successfully");
+      toast.success("Session Terminated & History Cleared");
     } else {
       toast.error("Ghalt Code! Please use your real Parental PIN.");
       setInputCode("");

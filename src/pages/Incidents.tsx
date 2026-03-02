@@ -10,19 +10,36 @@ const Incidents = () => {
   const [showSecurityPrompt, setShowSecurityPrompt] = useState(false);
   const [inputCode, setInputCode] = useState("");
 
-  // --- Yahan Fix Hai: System ka Parental Code uthana ---
+  // --- FIX 1: Parental PIN Logic (0000 khatam) ---
   const getSystemParentalCode = () => {
-    // Aapki web jis naam se code save karti hai (Storage name check kar lein, aksar 'parental_code' hota hai)
-    return localStorage.getItem("parental_code") || "0000"; 
+    // Sirf wahi code uthayega jo aapne settings mein save kiya hai
+    const savedPin = localStorage.getItem("parental_code") || 
+                     localStorage.getItem("parentalCode") || 
+                     localStorage.getItem("user_pin");
+    return savedPin; 
   };
 
+  // --- FIX 2: Double Logs Filter ---
   const loadLogs = () => {
     const security = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
     const diary = JSON.parse(localStorage.getItem("study_diary") || "[]");
-    const combined = [...security, ...diary].sort((a, b) => 
+    
+    // Dono arrays ko mix karein
+    const allLogs = [...security, ...diary];
+
+    // Filter lagaya taake duplicate content aur time wale logs dobara na ayein
+    const uniqueLogs = allLogs.filter((log, index, self) =>
+      index === self.findIndex((t) => (
+        t.content === log.content && t.time === log.time
+      ))
+    );
+
+    // Latest logs ko upar dikhane ke liye sort karein
+    const sorted = uniqueLogs.sort((a, b) => 
       new Date(b.timestamp || b.id).getTime() - new Date(a.timestamp || a.id).getTime()
     );
-    setLogs(combined);
+    
+    setLogs(sorted);
   };
 
   useEffect(() => {
@@ -34,15 +51,22 @@ const Incidents = () => {
   const confirmDelete = () => {
     const activeCode = getSystemParentalCode();
     
+    if (!activeCode) {
+      toast.error("Settings mein ja kar Parental PIN set karein!");
+      return;
+    }
+
+    // Sirf asli PIN check hoga
     if (inputCode === activeCode) {
       localStorage.removeItem("study_guard_incidents");
       localStorage.removeItem("study_diary");
+      localStorage.removeItem("study_logged"); // Study Start log reset
       setLogs([]);
       setShowSecurityPrompt(false);
       setInputCode("");
-      toast.success("VIP History Cleared Successfully");
+      toast.success("Elite History Cleared Successfully");
     } else {
-      toast.error("Ghalt Code! Please use your Parental Code.");
+      toast.error("Ghalt Code! Please use your real Parental PIN.");
       setInputCode("");
     }
   };
@@ -68,12 +92,11 @@ const Incidents = () => {
             </button>
           </div>
 
-          {/* Security Prompt Modal */}
           {showSecurityPrompt && (
             <div className="mb-8 p-6 bg-black border-2 border-amber-500/50 rounded-[30px] animate-in fade-in zoom-in duration-300">
               <div className="flex items-center gap-3 mb-4 text-amber-500">
                 <Lock size={20} />
-                <p className="font-bold text-sm">Enter Parental Code to Proceed</p>
+                <p className="font-bold text-sm">Enter Parental PIN to Delete</p>
               </div>
               <input 
                 type="password" 
@@ -89,7 +112,6 @@ const Incidents = () => {
             </div>
           )}
 
-          {/* Logs List - Black & Gold Theme */}
           <div className="space-y-5 relative z-10">
             {logs.length === 0 ? (
               <div className="text-center py-24 bg-black/50 rounded-[35px] border border-[#1a1a1a] text-gray-600">
@@ -100,7 +122,7 @@ const Incidents = () => {
               logs.map((log, index) => (
                 <div key={index} className="group bg-gradient-to-br from-[#111] to-black p-6 rounded-[30px] border border-[#1a1a1a] flex gap-5 hover:border-amber-500/40 transition-all duration-500">
                   <div className="flex-shrink-0 p-4 rounded-2xl bg-[#0a0a0a] text-amber-500 border border-amber-900/20 shadow-inner group-hover:scale-110 transition-transform">
-                    {log.type === 'VIDEO' ? <Video size={24}/> : log.type === 'QUESTION' ? <BookOpen size={24}/> : <ShieldAlert size={24}/>}
+                    {log.type === 'VIDEO' ? <Video size={24}/> : log.type === 'STUDY' ? <BookOpen size={24}/> : <ShieldAlert size={24}/>}
                   </div>
                   <div className="flex-1">
                     <div className="flex justify-between items-start mb-2">
@@ -112,7 +134,7 @@ const Incidents = () => {
                       </span>
                     </div>
                     <p className="text-gray-100 font-bold text-[15px] leading-snug">
-                      {log.content || log.details || log.reason}
+                      {log.content}
                     </p>
                     <p className="text-[10px] text-gray-700 mt-3 font-medium italic border-t border-[#1a1a1a] pt-2">
                       {log.date}
@@ -124,7 +146,6 @@ const Incidents = () => {
           </div>
         </div>
 
-        {/* --- GOLDEN SIGNATURE --- */}
         <footer className="mt-16 mb-10 text-center">
           <div className="inline-block relative group">
             <div className="absolute -inset-1 bg-gradient-to-r from-amber-600 to-yellow-400 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
@@ -142,4 +163,3 @@ const Incidents = () => {
 };
 
 export default Incidents;
-      

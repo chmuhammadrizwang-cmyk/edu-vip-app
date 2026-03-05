@@ -15,7 +15,9 @@ import { Send, Mic, MicOff, Volume2, Share2, Shield, Clock } from "lucide-react"
 
 type Msg = { role: "user" | "assistant"; content: string };
 
-const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
+// 🔥 Groq Configuration
+const GROQ_API_KEY = "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";
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 const Chat = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -33,11 +35,10 @@ const Chat = () => {
   }, []);
 
   useStudyMonitor(onTimerEnd, () => {
-  triggerOverlay();
-  logStudyActivity("System", "Bacha wapis parhai par aa gaya (Focus Restored)");
-});
+    triggerOverlay();
+    logStudyActivity("System", "Bacha wapis parhai par aa gaya (Focus Restored)");
+  });
 
-  // Countdown timer
   useEffect(() => {
     const tick = setInterval(() => {
       const endStr = localStorage.getItem("edu_study_session_end");
@@ -59,30 +60,22 @@ const Chat = () => {
     return () => clearInterval(tick);
   }, [studyActive]);
 
-  // Back button lock: redirect to about:blank if user forces exit during active session
   useEffect(() => {
     if (!studyActive) return;
-
-    // Push extra history entries to absorb back presses
     const lockHistory = () => {
       window.history.pushState({ studyGuardLock: true }, "", window.location.href);
       window.history.pushState({ studyGuardLock: true }, "", window.location.href);
     };
-
     lockHistory();
-
     let backPressCount = 0;
     let backPressTimer: ReturnType<typeof setTimeout> | null = null;
 
-        const handlePopState = (e: PopStateEvent) => {
+    const handlePopState = (e: PopStateEvent) => {
       const endStr = localStorage.getItem("edu_study_session_end");
       if (endStr && Date.now() < Number(endStr)) {
         e.preventDefault();
         e.stopImmediatePropagation();
-
         backPressCount++;
-
-        // Agar bacha 3 baar back dabaye to log bany aur bahar nikal dy
         if (backPressCount >= 3) {
           logStudyActivity("Security", "Forced exit attempt! System closed the app.");
           const incidents = JSON.parse(localStorage.getItem("study_guard_incidents") || "[]");
@@ -91,16 +84,11 @@ const Chat = () => {
           window.location.replace("about:blank");
           return;
         }
-
-        // Timer ko reset karo agar bacha aram se back dabaye
         if (backPressTimer) clearTimeout(backPressTimer);
         backPressTimer = setTimeout(() => { backPressCount = 0; }, 2000);
-
-        // Screen ko dubara lock karo
         lockHistory();
       }
     };
-
     window.addEventListener("popstate", handlePopState);
     return () => {
       window.removeEventListener("popstate", handlePopState);
@@ -141,15 +129,13 @@ const Chat = () => {
     speechSynthesis.cancel();
     const clean = cleanMarkdown(text);
     const u = new SpeechSynthesisUtterance(clean);
-    u.rate = 0.9;
+    u.rate = 0.95;
     u.pitch = 1.0;
     const voices = speechSynthesis.getVoices();
     const preferred = voices.find(v =>
       v.name.includes("Google UK English Female") ||
-      v.name.includes("Google Hindi") ||
       v.name.includes("Google US English")
-    ) || voices.find(v => v.lang.startsWith("en") && v.name.includes("Female"))
-      || voices.find(v => v.lang.startsWith("en"));
+    ) || voices.find(v => v.lang.startsWith("en"));
     if (preferred) u.voice = preferred;
     speechSynthesis.speak(u);
   };
@@ -181,21 +167,13 @@ const Chat = () => {
   const handleShare = async () => {
     const shareData = {
       title: "Study Guard",
-      text: `Hey! I'm using Study Guard to ace my exams. It's a professional Focus Tool developed by Rizwan Ashfaq. Try it here:`,
+      text: `Hey! I'm using Study Guard to ace my exams. It's a professional Focus Tool developed by Rizwan Ashfaq.`,
       url: "https://edu-vip-app.lovable.app",
     };
     try {
-      if (navigator.share) {
-        await navigator.share(shareData);
-      } else {
-        await navigator.clipboard.writeText(`${shareData.text} ${shareData.url}`);
-        toast.success("Link copied to clipboard!");
-      }
+      if (navigator.share) { await navigator.share(shareData); } 
+      else { await navigator.clipboard.writeText(`${shareData.text} ${shareData.url}`); toast.success("Link copied!"); }
     } catch {}
-  };
-
-  const handleStopTimer = () => {
-    setShowPin(true);
   };
 
   const onPinSuccess = () => {
@@ -208,7 +186,7 @@ const Chat = () => {
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
-logStudyActivity("Question", input.trim()); 
+    logStudyActivity("Question", input.trim()); 
     
     const userMsg: Msg = { role: "user", content: input.trim() };
     const newMessages = [...messages, userMsg];
@@ -218,19 +196,24 @@ logStudyActivity("Question", input.trim());
 
     let assistantSoFar = "";
     try {
-      const resp = await fetch(CHAT_URL, {
+      const resp = await fetch(GROQ_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          "Authorization": `Bearer ${GROQ_API_KEY}`,
         },
-        body: JSON.stringify({ messages: newMessages }),
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            { role: "system", content: "You are an Elite Study Guardian for Class 1-12. Answer only educational questions. Be concise and professional. If the user asks about movies or games, refuse politely." },
+            ...newMessages
+          ],
+          stream: true,
+        }),
       });
 
       if (!resp.ok || !resp.body) {
-        if (resp.status === 429) { toast.error("Rate limited, try again later"); }
-        else if (resp.status === 402) { toast.error("Credits exhausted"); }
-        else { toast.error("AI request failed"); }
+        toast.error("AI request failed");
         setIsLoading(false);
         return;
       }
@@ -246,12 +229,10 @@ logStudyActivity("Question", input.trim());
 
         let newlineIndex: number;
         while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
-          let line = textBuffer.slice(0, newlineIndex);
+          let line = textBuffer.slice(0, newlineIndex).trim();
           textBuffer = textBuffer.slice(newlineIndex + 1);
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (line.startsWith(":") || line.trim() === "") continue;
           if (!line.startsWith("data: ")) continue;
-          const jsonStr = line.slice(6).trim();
+          const jsonStr = line.slice(6);
           if (jsonStr === "[DONE]") break;
           try {
             const parsed = JSON.parse(jsonStr);
@@ -266,13 +247,10 @@ logStudyActivity("Question", input.trim());
                 return [...prev, { role: "assistant", content: assistantSoFar }];
               });
             }
-          } catch {
-            textBuffer = line + "\n" + textBuffer;
-            break;
-          }
+          } catch { continue; }
         }
       }
-      if (assistantSoFar) speakText(assistantSoFar.slice(0, 500));
+      if (assistantSoFar) speakText(assistantSoFar.substring(0, 600));
     } catch {
       toast.error("Connection error");
     }
@@ -287,28 +265,18 @@ logStudyActivity("Question", input.trim());
       <AppHeader onMenuClick={() => setSidebarOpen(true)} title="Study Guard" />
 
       <main className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {/* Countdown Timer */}
         {studyActive && remainingTime && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="glass rounded-2xl p-4 text-center glow-primary"
-          >
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="glass rounded-2xl p-4 text-center glow-primary">
             <div className="flex items-center justify-center gap-2 mb-1">
               <Clock className="h-4 w-4 text-accent" />
-              <span className="text-xs text-muted-foreground font-medium">STUDY TIME REMAINING</span>
+              <span className="text-xs text-muted-foreground font-medium uppercase">Study Time Remaining</span>
             </div>
             <p className="font-display text-3xl font-bold text-gradient-gold glow-text-gold">{remainingTime}</p>
           </motion.div>
         )}
 
-        {/* Timer Done Banner */}
         {timerDone && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="glass rounded-2xl p-6 text-center glow-cyan"
-          >
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="glass rounded-2xl p-6 text-center glow-cyan">
             <div className="text-4xl mb-2">🎉</div>
             <h2 className="font-display text-lg font-bold text-gradient-gold glow-text-gold">You are free now!</h2>
             <p className="text-sm text-muted-foreground mt-1">Great job staying focused!</p>
@@ -321,98 +289,39 @@ logStudyActivity("Question", input.trim());
               <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-primary glow-primary flex items-center justify-center">
                 <Shield className="h-10 w-10 text-primary-foreground" />
               </div>
-              <h2 className="font-display text-xl font-bold text-gradient-primary mb-2">
-                Welcome, {userName}!
-              </h2>
-              <p className="text-muted-foreground text-sm">Your AI Study Guardian is ready.</p>
+              <h2 className="font-display text-xl font-bold text-gradient-primary mb-2">Welcome, {userName}!</h2>
+              <p className="text-muted-foreground text-sm">Your Groq AI Study Guardian is ready.</p>
               <div className="flex gap-3 mt-6 justify-center">
-                <button
-                  onClick={handleShare}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-muted/50 border border-border text-foreground text-sm hover:bg-muted transition-all"
-                >
-                  <Share2 className="h-4 w-4 text-secondary" />
-                  Share with Friends
-                </button>
-                {studyActive && (
-                  <button
-                    onClick={handleStopTimer}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-destructive/20 border border-destructive/30 text-destructive text-sm hover:bg-destructive/30 transition-all"
-                  >
-                    Stop Timer
-                  </button>
-                )}
+                <button onClick={handleShare} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-muted/50 border border-border text-foreground text-sm hover:bg-muted transition-all"><Share2 className="h-4 w-4 text-secondary" /> Share</button>
+                {studyActive && <button onClick={() => setShowPin(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-destructive/20 border border-destructive/30 text-destructive text-sm hover:bg-destructive/30 transition-all">Stop Timer</button>}
               </div>
             </div>
           </div>
         )}
 
         {messages.map((msg, i) => (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
-            <div
-              className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-                msg.role === "user"
-                  ? "bg-gradient-primary text-primary-foreground"
-                  : "glass"
-              }`}
-            >
+          <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === "user" ? "bg-gradient-primary text-primary-foreground shadow-lg" : "glass border border-white/10"}`}>
               {msg.role === "assistant" ? (
                 <div className="flex items-start gap-2">
-                  <div className="prose prose-invert prose-sm max-w-none flex-1">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
-                  </div>
-                  <button onClick={() => speakText(msg.content)} className="mt-1 p-1 rounded hover:bg-muted/50 transition-colors shrink-0">
-                    <Volume2 className="h-4 w-4 text-secondary" />
-                  </button>
+                  <div className="prose prose-invert prose-sm max-w-none flex-1"><ReactMarkdown>{msg.content}</ReactMarkdown></div>
+                  <button onClick={() => speakText(msg.content)} className="mt-1 p-1 rounded hover:bg-white/10 transition-colors"><Volume2 className="h-4 w-4 text-secondary" /></button>
                 </div>
-              ) : (
-                <p className="text-sm">{msg.content}</p>
-              )}
+              ) : <p className="text-sm font-medium">{msg.content}</p>}
             </div>
           </motion.div>
         ))}
         {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
-          <div className="flex justify-start">
-            <div className="glass rounded-2xl px-4 py-3">
-              <div className="flex gap-1">
-                <span className="w-2 h-2 bg-primary rounded-full animate-bounce" />
-                <span className="w-2 h-2 bg-secondary rounded-full animate-bounce" style={{ animationDelay: "0.1s" }} />
-                <span className="w-2 h-2 bg-accent rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} />
-              </div>
-            </div>
-          </div>
+          <div className="flex justify-start"><div className="glass rounded-2xl px-4 py-3"><div className="flex gap-1"><span className="w-2 h-2 bg-primary rounded-full animate-bounce" /><span className="w-2 h-2 bg-secondary rounded-full animate-bounce" style={{ animationDelay: "0.1s" }} /><span className="w-2 h-2 bg-accent rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} /></div></div></div>
         )}
         <div ref={bottomRef} />
       </main>
 
       <div className="px-4 pb-2">
-        <div className="flex gap-2 glass rounded-2xl p-2">
-          <button
-            onClick={toggleVoice}
-            className={`p-3 rounded-xl transition-all ${
-              isListening ? "bg-destructive text-destructive-foreground glow-pink" : "hover:bg-muted text-muted-foreground"
-            }`}
-          >
-            {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-          </button>
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-            placeholder="Ask anything..."
-            className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none px-2"
-          />
-          <button
-            onClick={sendMessage}
-            disabled={isLoading || !input.trim()}
-            className="p-3 rounded-xl bg-gradient-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40"
-          >
-            <Send className="h-5 w-5" />
-          </button>
+        <div className="flex gap-2 glass rounded-2xl p-2 border border-white/5">
+          <button onClick={toggleVoice} className={`p-3 rounded-xl transition-all ${isListening ? "bg-destructive text-destructive-foreground glow-pink" : "hover:bg-muted text-muted-foreground"}`}>{isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}</button>
+          <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendMessage()} placeholder="Ask any study question..." className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none px-2" />
+          <button onClick={sendMessage} disabled={isLoading || !input.trim()} className="p-3 rounded-xl bg-gradient-primary text-primary-foreground hover:scale-105 active:scale-95 transition-all shadow-lg"><Send className="h-5 w-5" /></button>
         </div>
         <BrandingFooter />
       </div>
@@ -421,3 +330,4 @@ logStudyActivity("Question", input.trim());
 };
 
 export default Chat;
+  

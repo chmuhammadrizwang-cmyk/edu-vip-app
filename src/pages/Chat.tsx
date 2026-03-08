@@ -1,35 +1,22 @@
 /**
- * PROJECT: STUDY GUARD (ULTRA-ELITE PRO)
- * VERSION: 3.0.1
+ * PROJECT: STUDY GUARD (SUPREME EDITION)
  * DEVELOPER: RIZWAN ASHFAQ
- * * DESCRIPTION:
- * This is the core chat engine for Study Guard AI. It features:
- * 1. Groq Cloud Llama-3 Integration
- * 2. Automatic AI Voice Synthesis (Text-to-Speech)
- * 3. Anti-Cheat & Focus Monitoring System
- * 4. Advanced Session Timer & Incident Logger
- * 5. Full Parental Control Lock System
+ * UI/UX: ULTRA-MODERN GLOW & ANIMATED GRADIENTS
  */
 
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import { logStudyActivity } from "@/Utils/activityLogger";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
-
-// Core UI Components
 import BrandingFooter from "@/components/BrandingFooter";
 import AppHeader from "@/components/AppHeader";
 import AppSidebar from "@/components/AppSidebar";
 import FocusOverlay from "@/components/FocusOverlay";
 import PinDialog from "@/components/PinDialog";
-
-// Custom Hooks for Security & Activity
-import { logStudyActivity } from "@/Utils/activityLogger";
 import { useStudyMonitor } from "@/hooks/useStudyMonitor";
 import { useStudyLock, isStudyActive } from "@/hooks/useStudyLock";
 import { useFocusOverlay } from "@/hooks/useFocusOverlay";
-
-// Icons for Visual Feedback
 import { 
   Send, 
   Mic, 
@@ -40,417 +27,234 @@ import {
   Clock, 
   BrainCircuit,
   Sparkles,
-  Lock,
-  MessageSquare,
-  AlertTriangle
+  Zap
 } from "lucide-react";
 
-// Types Definition
-type MessageRole = "user" | "assistant";
-interface Message {
-  role: MessageRole;
-  content: string;
-}
+type Msg = { role: "user" | "assistant"; content: string };
 
-// Global Constants
 const GROQ_API_KEY = "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";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 const Chat = () => {
-  // -----------------------------------------------------------------
-  // 1. STATE MANAGEMENT
-  // -----------------------------------------------------------------
-  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
-  const [studyActive, setStudyActive] = useState<boolean>(isStudyActive());
-  const [timerDone, setTimerDone] = useState<boolean>(false);
-  const [remainingTime, setRemainingTime] = useState<string>("");
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState<string>("");
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isListening, setIsListening] = useState<boolean>(false);
-  const [showPin, setShowPin] = useState<boolean>(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [studyActive, setStudyActive] = useState(isStudyActive());
+  const [timerDone, setTimerDone] = useState(false);
+  const [remainingTime, setRemainingTime] = useState("");
+  const { showOverlay: showFocusOverlay, triggerOverlay } = useFocusOverlay();
+  
+  const [messages, setMessages] = useState<Msg[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [showPin, setShowPin] = useState(false);
   
   const bottomRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const userName = localStorage.getItem("study_guard_name") || "Student";
 
-  // -----------------------------------------------------------------
-  // 2. SECURITY & MONITORING LOGIC
-  // -----------------------------------------------------------------
-  const { showOverlay: showFocusOverlay, triggerOverlay } = useFocusOverlay();
   useStudyLock();
 
-  const handleSessionCompletion = useCallback(() => {
-    console.log("Session Ended Successfully");
-    setStudyActive(false);
-    setTimerDone(true);
-    setRemainingTime("");
-    toast.success("Elite Focus Achieved! Session Complete.");
-  }, []);
-
-  useStudyMonitor(handleSessionCompletion, () => {
-    triggerOverlay();
-    logStudyActivity("Security", "Focus lost! User attempted to switch tabs.");
-  });
-
-  // Countdown Timer Processor
-  useEffect(() => {
-    const runTimer = () => {
-      const endTimestamp = localStorage.getItem("edu_study_session_end");
-      
-      if (!endTimestamp) {
-        if (studyActive) setStudyActive(false);
-        return;
-      }
-
-      const timeLeft = Number(endTimestamp) - Date.now();
-      
-      if (timeLeft <= 0) {
-        setRemainingTime("");
-        setStudyActive(false);
-        return;
-      }
-
-      const hours = Math.floor(timeLeft / (1000 * 60 * 60));
-      const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
-
-      const displayTime = `${hours > 0 ? hours + ':' : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-      setRemainingTime(displayTime);
-    };
-
-    const timerInterval = setInterval(runTimer, 1000);
-    return () => clearInterval(timerInterval);
-  }, [studyActive]);
-
-  // -----------------------------------------------------------------
-  // 3. ANTI-EXIT SYSTEM (HISTORY LOCKING)
-  // -----------------------------------------------------------------
-  useEffect(() => {
-    if (!studyActive) return;
-
-    const preventNavigation = () => {
-      window.history.pushState({ lock: true }, "", window.location.href);
-    };
-
-    preventNavigation();
-    let escapeAttempts = 0;
-
-    const handlePopState = (event: PopStateEvent) => {
-      const activeSession = localStorage.getItem("edu_study_session_end");
-      
-      if (activeSession && Date.now() < Number(activeSession)) {
-        event.preventDefault();
-        escapeAttempts++;
-        
-        toast.error(`Access Denied: Study Mode is Active (${escapeAttempts}/3)`);
-        
-        if (escapeAttempts >= 3) {
-          logStudyActivity("Security", "Force exit detected. Auto-shutdown triggered.");
-          window.location.replace("about:blank");
-        }
-        
-        preventNavigation();
-      }
-    };
-
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [studyActive]);
-
-  // -----------------------------------------------------------------
-  // 4. ELITE VOICE ENGINE (TTS)
-  // -----------------------------------------------------------------
-  const processTextForSpeech = (rawText: string): string => {
-    return rawText
-      .replace(/#{1,6}/g, "") // Headers
-      .replace(/\*\*/g, "")   // Bold
-      .replace(/\*/g, "")    // Italic
-      .replace(/`{1,3}.*?`{1,3}/gs, "") // Code blocks
-      .replace(/\[.*?\]\(.*?\)/g, "") // Links
-      .trim();
-  };
-
-  const speakResponse = useCallback((text: string) => {
-    if (!('speechSynthesis' in window)) {
-      console.error("Speech Synthesis not supported in this browser.");
-      return;
-    }
-
-    // Cancel any ongoing speech
+  // --- VOICE ENGINE (FIXED) ---
+  const speakText = useCallback((text: string) => {
+    if (!('speechSynthesis' in window)) return;
+    
+    // Stop any current speech
     window.speechSynthesis.cancel();
 
-    const cleanText = processTextForSpeech(text);
-    const utterance = new SpeechSynthesisUtterance(cleanText);
+    // Clean text for natural speech
+    const cleanText = text.replace(/[#*`_~]/g, "").replace(/\n/g, " ").trim();
+    
+    // Create utterance with a slight delay to ensure browser readiness
+    setTimeout(() => {
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      const voices = window.speechSynthesis.getVoices();
+      
+      // Try to find a high-quality natural voice
+      const preferredVoice = voices.find(v => 
+        v.name.includes("Google UK English Female") || 
+        v.name.includes("Microsoft Libut") ||
+        v.lang === "en-US"
+      );
 
-    // Premium Voice Selection
-    const voices = window.speechSynthesis.getVoices();
-    const premiumVoice = voices.find(v => 
-      v.name.includes("Google UK English Female") || 
-      v.name.includes("Natural")
-    ) || voices[0];
-
-    utterance.voice = premiumVoice;
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
-
-    window.speechSynthesis.speak(utterance);
+      if (preferredVoice) utterance.voice = preferredVoice;
+      utterance.rate = 0.95; // Slightly slower for clarity
+      utterance.pitch = 1.0;
+      
+      window.speechSynthesis.speak(utterance);
+    }, 100);
   }, []);
 
-  // Trigger auto-voice when AI message arrives
+  // Timer & Security Logic
+  const onTimerEnd = useCallback(() => {
+    setStudyActive(false);
+    setTimerDone(true);
+    toast.success("Focus Session Complete! 🏆");
+  }, []);
+
+  useStudyMonitor(onTimerEnd, () => triggerOverlay());
+
   useEffect(() => {
-    if (!isLoading && messages.length > 0) {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage.role === "assistant") {
-        speakResponse(lastMessage.content);
-      }
-    }
-  }, [isLoading, messages, speakResponse]);
+    const tick = setInterval(() => {
+      const endStr = localStorage.getItem("edu_study_session_end");
+      if (!endStr) return;
+      const diff = Number(endStr) - Date.now();
+      if (diff <= 0) { setRemainingTime(""); return; }
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setRemainingTime(`${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
+    }, 1000);
+    return () => clearInterval(tick);
+  }, []);
 
-  // -----------------------------------------------------------------
-  // 5. AI COMMUNICATION (GROQ)
-  // -----------------------------------------------------------------
-  const handleSendMessage = async () => {
+  // --- CORE CHAT LOGIC ---
+  const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
-
-    const userMessage: Message = { role: "user", content: input.trim() };
-    setMessages((prev) => [...prev, userMessage]);
+    const userMsg: Msg = { role: "user", content: input.trim() };
+    setMessages(prev => [...prev, userMsg]);
     setInput("");
     setIsLoading(true);
-
-    // Log to activity for parents
-    logStudyActivity("AI_Query", userMessage.content);
 
     try {
       const response = await fetch(GROQ_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${GROQ_API_KEY}`,
-        },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${GROQ_API_KEY}` },
         body: JSON.stringify({
           model: "llama-3.3-70b-versatile",
-          messages: [
-            { 
-              role: "system", 
-              content: "You are Study Guard AI. Only help with education. If asked about fun, say 'Stay focused on your studies!'" 
-            },
-            ...messages,
-            userMessage,
-          ],
-          temperature: 0.5,
-          max_tokens: 1024,
+          messages: [{ role: "system", content: "You are an Elite Study Guardian. Answer shortly." }, ...messages, userMsg],
         }),
       });
-
-      const result = await response.json();
+      const data = await response.json();
+      const aiResponse = data.choices[0].message.content;
+      setMessages(prev => [...prev, { role: "assistant", content: aiResponse }]);
       
-      if (result.choices && result.choices[0]) {
-        const aiResponse: Message = {
-          role: "assistant",
-          content: result.choices[0].message.content,
-        };
-        setMessages((prev) => [...prev, aiResponse]);
-      }
-    } catch (error) {
-      console.error("GROQ API Error:", error);
-      toast.error("Network Error: AI Guardian is recharging.");
+      // AUTO SPEAK THE FULL RESPONSE
+      speakText(aiResponse);
+    } catch (err) {
+      toast.error("Network Error.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // -----------------------------------------------------------------
-  // 6. SPEECH-TO-TEXT (STT)
-  // -----------------------------------------------------------------
-  const handleVoiceInput = () => {
-    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-    
-    if (!SpeechRecognition) {
-      toast.error("Your browser does not support Voice Recognition.");
-      return;
-    }
-
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.lang = "en-US";
-
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-    
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setInput(transcript);
-      toast.success("Voice Captured!");
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
-  };
-
-  // -----------------------------------------------------------------
-  // 7. RENDER COMPONENT
-  // -----------------------------------------------------------------
   return (
-    <div className="h-screen flex flex-col bg-[#030305] text-white selection:bg-primary/40 font-inter overflow-hidden">
-      {/* SECURITY OVERLAYS */}
+    <div className="h-screen flex flex-col bg-[#05010a] text-white selection:bg-purple-500/30 overflow-hidden relative">
+      {/* Animated Background Glows */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-purple-600/20 blur-[120px] rounded-full" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/20 blur-[120px] rounded-full" />
+
       <FocusOverlay show={showFocusOverlay} />
-      <PinDialog 
-        open={showPin} 
-        onSuccess={() => { setStudyActive(false); setShowPin(false); }} 
-        onCancel={() => setShowPin(false)} 
-      />
+      <PinDialog open={showPin} onSuccess={() => setStudyActive(false)} onCancel={() => setShowPin(false)} />
       
-      {/* NAVIGATION */}
-      <AppHeader onMenuClick={() => setSidebarOpen(true)} title="STUDY GUARD ELITE" />
+      <AppHeader onMenuClick={() => setSidebarOpen(true)} title="STUDY GUARD SUPREME" />
       <AppSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {/* CHAT INTERFACE */}
-      <main className="flex-1 overflow-y-auto px-4 py-8 max-w-5xl mx-auto w-full space-y-8 no-scrollbar scroll-smooth">
+      <main className="flex-1 overflow-y-auto px-4 py-6 space-y-8 max-w-4xl mx-auto w-full z-10 no-scrollbar">
         
-        {/* TIMER COMPONENT */}
-        {studyActive && remainingTime && (
+        {/* Elite Welcome UI */}
+        {messages.length === 0 && (
           <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="p-1 rounded-2xl bg-gradient-to-r from-primary/50 to-purple-600/50"
+            initial={{ opacity: 0, y: 30 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            className="flex flex-col items-center justify-center py-12 text-center"
           >
-            <div className="bg-black/80 backdrop-blur-md p-4 rounded-2xl flex items-center justify-between border border-white/10">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-primary/20 rounded-lg">
-                  <Clock className="w-5 h-5 text-primary animate-pulse" />
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold">Current Focus Session</p>
-                  <p className="text-2xl font-black font-mono text-white leading-none">{remainingTime}</p>
-                </div>
+            <div className="relative mb-10">
+              <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-blue-500 blur-3xl opacity-30 animate-pulse" />
+              {/* Premium Brain Tree Image Placeholder - Replace with your actual image URL if needed */}
+              <div className="relative w-40 h-40 rounded-full border-4 border-white/10 p-2 bg-black/40 backdrop-blur-3xl shadow-[0_0_50px_rgba(168,85,247,0.4)] overflow-hidden">
+                <img 
+                  src="https://cdn-icons-png.flaticon.com/512/6166/6166943.png" 
+                  alt="AI Guardian" 
+                  className="w-full h-full object-contain filter drop-shadow-2xl"
+                />
               </div>
-              <Shield className="w-6 h-6 text-primary/40" />
+              <motion.div animate={{ rotate: 360 }} transition={{ duration: 10, repeat: Infinity, ease: "linear" }} className="absolute -top-2 -right-2 text-yellow-400">
+                <Sparkles />
+              </motion.div>
+            </div>
+            
+            <h2 className="text-4xl font-black mb-2 bg-gradient-to-r from-white via-purple-200 to-gray-500 bg-clip-text text-transparent tracking-tighter">
+              HELLO, {userName.toUpperCase()}
+            </h2>
+            <p className="text-gray-400 font-medium tracking-wide">I am your Elite Study Guardian. Ready to learn?</p>
+
+            <div className="flex gap-4 mt-8">
+              <button onClick={() => setShowPin(true)} className="flex items-center gap-2 px-6 py-3 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-sm font-bold">
+                <Shield className="w-4 h-4 text-purple-400" /> LOCK SESSION
+              </button>
+              {remainingTime && (
+                <div className="flex items-center gap-2 px-6 py-3 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 font-mono font-bold">
+                  <Clock className="w-4 h-4" /> {remainingTime}
+                </div>
+              )}
             </div>
           </motion.div>
         )}
 
-        {/* WELCOME SCREEN */}
-        <AnimatePresence>
-          {messages.length === 0 && (
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="flex flex-col items-center justify-center py-20 text-center"
-            >
-              <div className="relative mb-8 group">
-                <div className="absolute inset-0 bg-primary/30 blur-2xl rounded-full group-hover:bg-primary/50 transition-all duration-500" />
-                <div className="relative w-28 h-28 rounded-3xl bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center shadow-2xl rotate-3 hover:rotate-0 transition-transform">
-                  <BrainCircuit className="w-14 h-14 text-white" />
-                </div>
-              </div>
-              <h2 className="text-4xl font-black mb-4 tracking-tight">Focus Up, {userName}</h2>
-              <p className="text-gray-400 max-w-md mx-auto text-lg leading-relaxed">
-                Your AI Study Guardian is active. Ask anything from your syllabus to get started.
-              </p>
-              
-              <div className="mt-10 flex gap-4">
-                <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-full border border-white/10 text-xs text-gray-400">
-                  <Lock className="w-3 h-3" /> Secure Session
-                </div>
-                <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-full border border-white/10 text-xs text-gray-400">
-                  <Sparkles className="w-3 h-3 text-yellow-500" /> AI Powered
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* MESSAGES THREAD */}
-        <div className="space-y-8 pb-32">
-          {messages.map((msg, idx) => (
-            <motion.div 
-              key={idx}
-              initial={{ opacity: 0, x: msg.role === "user" ? 10 : -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div className={`group relative max-w-[85%] p-5 rounded-3xl shadow-2xl transition-all ${
-                msg.role === "user" 
-                  ? "bg-primary text-white rounded-br-none" 
-                  : "bg-white/5 border border-white/10 backdrop-blur-xl rounded-bl-none hover:bg-white/10"
+        {/* Message Thread */}
+        <div className="space-y-6 pb-32">
+          {messages.map((msg, i) => (
+            <motion.div key={i} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`p-5 rounded-[2rem] max-w-[88%] shadow-2xl backdrop-blur-2xl border ${
+                msg.role === 'user' 
+                ? 'bg-gradient-to-br from-purple-600 to-blue-700 text-white border-white/20 rounded-br-none' 
+                : 'bg-white/5 border-white/10 text-gray-100 rounded-bl-none'
               }`}>
-                <div className="flex items-start gap-4">
-                  <div className="flex-1">
-                    <ReactMarkdown className="prose prose-invert prose-sm leading-relaxed">
-                      {msg.content}
-                    </ReactMarkdown>
-                  </div>
-                  {msg.role === "assistant" && (
-                    <button 
-                      onClick={() => speakResponse(msg.content)}
-                      className="opacity-0 group-hover:opacity-100 p-2 hover:bg-white/10 rounded-xl transition-all"
-                    >
-                      <Volume2 className="w-4 h-4 text-primary" />
-                    </button>
-                  )}
-                </div>
+                <ReactMarkdown className="prose prose-invert text-sm sm:text-base leading-relaxed">{msg.content}</ReactMarkdown>
+                {msg.role === "assistant" && (
+                  <button onClick={() => speakText(msg.content)} className="mt-3 p-2 bg-white/5 rounded-full hover:bg-white/10 transition-all">
+                    <Volume2 className="w-4 h-4 text-purple-400" />
+                  </button>
+                )}
               </div>
             </motion.div>
           ))}
-          
-          {/* AI THINKING INDICATOR */}
           {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-white/5 border border-white/10 p-5 rounded-2xl flex gap-2">
-                <span className="w-2 h-2 bg-primary rounded-full animate-bounce" />
-                <span className="w-2 h-2 bg-primary/60 rounded-full animate-bounce delay-75" />
-                <span className="w-2 h-2 bg-primary/30 rounded-full animate-bounce delay-150" />
-              </div>
+            <div className="flex gap-2 p-5 bg-white/5 rounded-3xl w-24 border border-white/5 animate-pulse">
+              <Zap className="w-5 h-5 text-yellow-500 animate-bounce" />
             </div>
           )}
-          <div ref={bottomRef} className="h-10" />
+          <div ref={bottomRef} />
         </div>
       </main>
 
-      {/* INPUT SYSTEM */}
-      <footer className="fixed bottom-0 left-0 w-full p-6 bg-gradient-to-t from-black via-black/90 to-transparent backdrop-blur-sm">
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-white/5 border border-white/10 rounded-3xl p-2 flex items-center gap-2 shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] backdrop-blur-2xl focus-within:border-primary/50 transition-all">
-            <button 
-              onClick={handleVoiceInput}
-              className={`p-4 rounded-2xl transition-all ${
-                isListening ? "bg-red-500 text-white animate-pulse" : "text-gray-500 hover:bg-white/5"
-              }`}
-            >
-              {isListening ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-            </button>
-            
-            <input 
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-              placeholder="Type your academic question..."
-              className="flex-1 bg-transparent border-none outline-none text-white px-2 placeholder:text-gray-600 font-medium"
-            />
-
-            <button 
-              onClick={handleSendMessage}
-              disabled={!input.trim() || isLoading}
-              className="p-4 bg-primary text-white rounded-2xl hover:scale-105 active:scale-95 transition-all disabled:opacity-20 shadow-lg shadow-primary/20"
-            >
-              <Send className="w-6 h-6" />
-            </button>
-          </div>
-          <BrandingFooter />
+      {/* Supreme Input Section */}
+      <footer className="fixed bottom-0 left-0 w-full p-6 z-20">
+        <div className="max-w-4xl mx-auto flex items-center gap-3 bg-black/60 backdrop-blur-3xl border border-white/10 p-2 rounded-[2.5rem] shadow-[0_-20px_50px_rgba(0,0,0,0.5)]">
+          <button 
+            onClick={() => {
+              const SpeechRec = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+              const rec = new SpeechRec();
+              rec.onstart = () => setIsListening(true);
+              rec.onresult = (e: any) => setInput(e.results[0][0].transcript);
+              rec.onend = () => setIsListening(false);
+              rec.start();
+            }}
+            className={`p-5 rounded-full transition-all ${isListening ? "bg-red-500 text-white animate-pulse" : "bg-white/5 text-gray-400 hover:text-white"}`}
+          >
+            {isListening ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+          </button>
+          
+          <input 
+            value={input} 
+            onChange={(e) => setInput(e.target.value)} 
+            onKeyDown={(e) => e.key === "Enter" && sendMessage()} 
+            placeholder="Ask your Guardian..." 
+            className="flex-1 bg-transparent outline-none text-white px-4 placeholder:text-gray-600 font-bold text-lg" 
+          />
+          
+          <button 
+            onClick={sendMessage} 
+            disabled={!input.trim() || isLoading} 
+            className="p-5 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-full hover:scale-105 active:scale-95 transition-all shadow-lg shadow-purple-500/20 disabled:opacity-20"
+          >
+            <Send className="w-6 h-6" />
+          </button>
         </div>
+        <BrandingFooter />
       </footer>
     </div>
   );
 };
 
 export default Chat;
-      
+    

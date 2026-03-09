@@ -1,20 +1,8 @@
-/**
- * PROJECT: STUDY GUARD SUPREME (FINAL CYBER-LUXE)
- * DEVELOPER: RIZWAN ASHFAQ (SENIOR WEB DEVELOPER)
- * DESIGN: PREMIUM GLASS-MORPHISM + VOICE + SECURITY
- */
-
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
-
-// Premium Icons
-import { 
-  Send, Mic, MicOff, Volume2, Share2, Shield, 
-  Sparkles, Lock, Cpu, Activity, Info, 
-  Settings, History, ChevronLeft, Speaker
-} from "lucide-react";
+import { Send, Mic, MicOff, Share2, Sparkles, ChevronLeft, Clock, Play, Pause } from "lucide-react";
 
 // Types
 type Message = { role: "user" | "assistant"; content: string };
@@ -28,194 +16,182 @@ const Chat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isAudioOn, setIsAudioOn] = useState(true);
-  const [apiStatus, setApiStatus] = useState<"online" | "busy" | "offline">("online");
   
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const recognitionRef = useRef<any>(null);
+  // Timer State
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const timerInterval = useRef<NodeJS.Timeout | null>(null);
 
-  // --- VOICE ENGINE (CLEAN PHONETICS) ---
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  // --- TIMER FUNCTIONALITY ---
+  const startTimer = (minutes: number) => {
+    if (timerInterval.current) clearInterval(timerInterval.current);
+    setTimeLeft(minutes * 60);
+    setIsTimerRunning(true);
+  };
+
+  useEffect(() => {
+    if (isTimerRunning && timeLeft > 0) {
+      timerInterval.current = setInterval(() => {
+        setTimeLeft((prev) => prev - 1);
+      }, 1000);
+    } else if (timeLeft === 0) {
+      setIsTimerRunning(false);
+      if (timerInterval.current) clearInterval(timerInterval.current);
+      if (timeLeft === 0 && isTimerRunning) toast.success("Study Session Finished!");
+    }
+    return () => { if (timerInterval.current) clearInterval(timerInterval.current); };
+  }, [isTimerRunning, timeLeft]);
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  // --- VOICE ENGINE ---
   const speak = useCallback((text: string) => {
-    if (!isAudioOn || !('speechSynthesis' in window)) return;
+    if (!isAudioOn) return;
     window.speechSynthesis.cancel();
-    const cleanText = text.replace(/[#*`_~\[\]()]/g, "").trim();
-    
-    setTimeout(() => {
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      const voices = window.speechSynthesis.getVoices();
-      utterance.voice = voices.find(v => v.lang.includes('en-GB') || v.lang.includes('en-US')) || voices[0];
-      utterance.rate = 0.95;
-      window.speechSynthesis.speak(utterance);
-    }, 350);
+    const utterance = new SpeechSynthesisUtterance(text.replace(/[#*`_~]/g, ""));
+    utterance.rate = 1;
+    window.speechSynthesis.speak(utterance);
   }, [isAudioOn]);
 
-  // --- AI LOGIC ---
+  // --- AI LOGIC (FIXED CONNECTION) ---
   const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
-    
-    const userMsg: Message = { role: "user", content: input.trim() };
+    const query = input.trim();
+    if (!query || isLoading) return;
+
+    const userMsg: Message = { role: "user", content: query };
     setMessages(prev => [...prev, userMsg]);
     setInput("");
     setIsLoading(true);
-    setApiStatus("busy");
 
     try {
-      const res = await fetch(GROQ_URL, {
+      const response = await fetch(GROQ_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${GROQ_API_KEY}` },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${GROQ_API_KEY}`
+        },
         body: JSON.stringify({
           model: "llama-3.3-70b-versatile",
-          messages: [{ role: "system", content: "You are the Supreme Study Guardian. Professional AI." }, ...messages, userMsg],
-        }),
+          messages: [{ role: "system", content: "You are Study Guard AI. Helpful and professional." }, ...messages, userMsg],
+        })
       });
-      const data = await res.json();
-      const aiRes = data.choices[0].message.content;
-      setMessages(prev => [...prev, { role: "assistant", content: aiRes }]);
-      speak(aiRes);
-      setApiStatus("online");
-    } catch (e) {
-      setApiStatus("offline");
-      toast.error("System connection failed.");
+
+      if (!response.ok) throw new Error("API Connection Error");
+      
+      const data = await response.json();
+      const aiContent = data.choices[0].message.content;
+      
+      setMessages(prev => [...prev, { role: "assistant", content: aiContent }]);
+      speak(aiContent);
+    } catch (error) {
+      toast.error("System connection failed. Check Internet/API Key.");
+      console.error(error);
     } finally {
       setIsLoading(false);
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0b041a] text-white font-sans overflow-hidden relative">
+    <div className="h-screen flex flex-col bg-[#0b041a] text-white overflow-hidden relative">
       
-      {/* Background Gradients (Tasveer ke mutabiq) */}
-      <div className="absolute inset-0 bg-gradient-to-b from-purple-900/20 via-blue-900/10 to-[#0b041a] pointer-events-none" />
-      <div className="absolute -top-40 -left-40 w-96 h-96 bg-purple-600/20 blur-[120px] rounded-full" />
-      <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-blue-600/20 blur-[120px] rounded-full" />
-
-      {/* Header Bar */}
-      <header className="px-6 py-4 flex items-center justify-between border-b border-white/5 backdrop-blur-md z-50">
-        <div className="flex items-center gap-4">
-          <ChevronLeft className="w-6 h-6 text-gray-400" />
-          <h1 className="text-sm font-black tracking-[0.3em] uppercase bg-gradient-to-r from-purple-400 to-pink-300 bg-clip-text text-transparent">
-            Study Guard Supreme
-          </h1>
+      {/* Header */}
+      <header className="p-4 flex items-center justify-between border-b border-white/10 backdrop-blur-md z-50">
+        <div className="flex items-center gap-2">
+          <ChevronLeft className="w-5 h-5 text-purple-400" />
+          <h1 className="text-xs font-bold uppercase tracking-widest text-purple-300">Study Guard Supreme</h1>
         </div>
-        <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${apiStatus === 'online' ? 'border-green-500/30 bg-green-500/10 text-green-400' : 'border-yellow-500/30 bg-yellow-500/10 text-yellow-400'}`}>
-          <div className={`w-2 h-2 rounded-full ${apiStatus === 'online' ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-yellow-500 animate-pulse'}`} />
-          <span className="text-[9px] font-black uppercase tracking-widest">{apiStatus}</span>
-        </div>
+        {isTimerRunning && (
+          <div className="bg-purple-600/20 px-3 py-1 rounded-full border border-purple-500/50 flex items-center gap-2">
+            <Clock className="w-3 h-3 text-purple-400" />
+            <span className="text-[10px] font-mono">{formatTime(timeLeft)}</span>
+          </div>
+        )}
       </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto px-6 py-8 relative z-10 no-scrollbar">
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-8">
+      {/* Main Container */}
+      <main className="flex-1 overflow-y-auto px-5 py-6 no-scrollbar">
+        {messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center min-h-[70vh] text-center">
             
-            {/* NEW LOGO: Digital Intelligence Tree (Tasveer wala look) */}
-            <div className="relative group">
-              <div className="absolute inset-0 bg-purple-500 blur-[80px] opacity-20 group-hover:opacity-40 transition-all duration-1000" />
-              <div className="relative w-52 h-52 p-1 rounded-full bg-gradient-to-tr from-yellow-500 via-purple-500 to-blue-500 shadow-2xl">
-                <div className="w-full h-full rounded-full bg-[#120826] flex items-center justify-center overflow-hidden border-2 border-white/10">
-                   <img 
-                    src="https://cdn-icons-png.flaticon.com/512/2991/2991148.png" 
-                    className="w-32 h-32 object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.2)]" 
-                    alt="Study AI Supreme"
-                   />
-                </div>
+            {/* BRAIN LOGO (FIXED) */}
+            <div className="w-40 h-40 mb-8 relative">
+              <div className="absolute inset-0 bg-purple-600 blur-[60px] opacity-20" />
+              <div className="relative w-full h-full rounded-full border-2 border-purple-500/30 p-4 bg-[#1a0b2e] flex items-center justify-center shadow-2xl">
+                <img 
+                  src="https://cdn-icons-png.flaticon.com/512/2103/2103633.png" 
+                  alt="Brain AI"
+                  className="w-24 h-24 object-contain brightness-110"
+                />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <h2 className="text-5xl font-black italic tracking-tighter">Hello, <span className="text-purple-400">Student</span></h2>
-              <p className="text-gray-400 text-lg font-medium">I am your AI Study Guardian. Ask me anything about your syllabus.</p>
-            </div>
+            <h2 className="text-4xl font-black mb-2">Hello, <span className="text-purple-400">Student</span></h2>
+            <p className="text-gray-400 text-sm max-w-[250px] mx-auto mb-8">Ask me anything about your syllabus and set your study focus.</p>
 
-            {/* Premium Buttons Section */}
-            <div className="flex flex-col w-full max-w-xs gap-4 pt-6">
-               <div className="flex gap-3">
-                 <button className="flex-1 flex items-center justify-center gap-3 py-4 rounded-xl bg-gradient-to-r from-blue-600 to-blue-800 border border-blue-400/30 shadow-[0_4px_15px_rgba(37,99,235,0.4)] font-black text-xs tracking-widest uppercase">
-                   <Share2 className="w-4 h-4" /> Share
-                 </button>
-                 <div className="flex-1 flex items-center justify-center gap-2 px-4 py-4 rounded-xl bg-white/5 border border-white/10">
-                    <span className="text-[10px] font-bold text-gray-300">Audio Output</span>
-                    <button onClick={() => setIsAudioOn(!isAudioOn)} className={`w-12 h-6 rounded-full relative transition-all ${isAudioOn ? 'bg-purple-600' : 'bg-gray-700'}`}>
-                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${isAudioOn ? 'right-1' : 'left-1'}`} />
-                    </button>
-                 </div>
-               </div>
-
-               {/* Waveform Visualization (Tasveer ke mutabiq) */}
-               <div className="w-full h-16 glass-panel rounded-2xl flex items-center justify-center gap-1 px-6 border border-white/5 bg-white/5">
-                  {[...Array(20)].map((_, i) => (
-                    <motion.div 
-                      key={i}
-                      animate={{ height: [10, Math.random() * 40, 10] }}
-                      transition={{ repeat: Infinity, duration: 1 + Math.random() }}
-                      className="w-1 bg-gradient-to-t from-purple-500 to-blue-400 rounded-full"
-                    />
-                  ))}
-               </div>
+            {/* QUICK ACTIONS & TIMER (FIXED) */}
+            <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
+              <button onClick={() => startTimer(25)} className="bg-white/5 border border-white/10 py-3 rounded-2xl flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-tighter hover:bg-purple-600 transition-all">
+                <Play className="w-3 h-3" /> 25m Focus
+              </button>
+              <button onClick={() => setIsAudioOn(!isAudioOn)} className={`border py-3 rounded-2xl flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-tighter transition-all ${isAudioOn ? 'bg-purple-600 border-purple-400' : 'bg-white/5 border-white/10'}`}>
+                {isAudioOn ? 'Audio ON' : 'Audio OFF'}
+              </button>
             </div>
           </div>
-        )}
-
-        {/* Chat Thread */}
-        <div className="space-y-8 pb-44">
-          <AnimatePresence>
+        ) : (
+          <div className="space-y-6 pb-32">
             {messages.map((msg, i) => (
-              <motion.div key={i} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`p-6 rounded-[2rem] max-w-[90%] shadow-2xl border ${
-                  msg.role === 'user' ? 'bg-gradient-to-br from-purple-600 to-indigo-700 border-white/20' : 'bg-white/5 border-white/10 backdrop-blur-xl'
+              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`p-4 rounded-2xl max-w-[85%] text-sm font-medium leading-relaxed shadow-lg ${
+                  msg.role === 'user' ? 'bg-purple-600 border border-purple-400' : 'bg-white/5 border border-white/10 backdrop-blur-md'
                 }`}>
-                  <ReactMarkdown className="prose prose-invert prose-sm font-bold leading-relaxed">{msg.content}</ReactMarkdown>
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>
-              </motion.div>
+              </div>
             ))}
-          </AnimatePresence>
-          <div ref={bottomRef} />
-        </div>
+            <div ref={bottomRef} />
+          </div>
+        )}
       </main>
 
-      {/* COMMIT DESCRIPTION SECTION (Tasveer wala style) */}
-      {messages.length === 0 && (
-        <div className="px-10 mb-40 text-center opacity-60">
-           <p className="text-[10px] font-mono leading-relaxed tracking-tight text-gray-400">
-             Commit: [feat]: Core security lock and voice-cleanup logic.<br />
-             Description: Complete rewrite of tab-monitoring security. <br />
-             Integrated speech synthesis API for automatic answer playback with phonetic cleaning. - Developer, Rizwan Ashfaq
-           </p>
-        </div>
-      )}
-
-      {/* Floating Tactical Input (Tasveer ke mutabiq) */}
-      <footer className="fixed bottom-0 left-0 w-full p-6 bg-gradient-to-t from-[#0b041a] to-transparent z-50">
-        <div className="max-w-4xl mx-auto">
-          <div className="relative flex items-center gap-3 p-1.5 rounded-[3rem] bg-gradient-to-r from-purple-900/40 via-blue-900/40 to-purple-900/40 border border-white/10 backdrop-blur-3xl shadow-2xl">
-            
-            {/* MIC BUTTON (Gold/Gradient) */}
-            <button className="p-4 rounded-full bg-gradient-to-b from-yellow-300 to-yellow-600 shadow-lg text-black">
-              <Mic className="w-6 h-6" />
+      {/* Input Section (Fixed Full Screen & Buttons) */}
+      <footer className="p-6 bg-gradient-to-t from-[#0b041a] to-transparent">
+        <div className="max-w-2xl mx-auto">
+          <div className="relative flex items-center bg-white/5 border border-white/10 rounded-[2rem] p-1.5 backdrop-blur-2xl shadow-2xl">
+            <button 
+              onClick={() => setIsListening(!isListening)}
+              className={`p-4 rounded-full transition-all ${isListening ? 'bg-red-500 animate-pulse' : 'bg-purple-600'}`}
+            >
+              {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
             </button>
             
             <input 
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="Ask your AI Study Guardian..." 
-              className="flex-1 bg-transparent border-none outline-none text-white font-bold text-lg px-2 placeholder:text-gray-500"
+              placeholder="Search your syllabus..." 
+              className="flex-1 bg-transparent border-none outline-none text-white px-3 text-sm font-semibold"
             />
 
-            {/* SEND BUTTON (Cyber Blue) */}
             <button 
               onClick={handleSend}
-              className="p-4 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-800 border border-blue-400/40 shadow-xl"
+              className="p-4 rounded-full bg-blue-600 shadow-lg shadow-blue-900/40"
             >
-              <Send className="w-6 h-6 text-white rotate-45" />
+              {isLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send className="w-5 h-5 rotate-45" />}
             </button>
           </div>
 
-          {/* Signature (Golden Sparkle) */}
-          <div className="flex justify-center mt-6">
-            <div className="flex items-center gap-2 text-yellow-500 font-black text-[11px] tracking-[0.2em] uppercase">
-              <Sparkles className="w-4 h-4" /> Rizwan Ashfaq Web Developer <Sparkles className="w-4 h-4" />
-            </div>
+          <div className="flex justify-center mt-4">
+            <p className="text-yellow-500 font-black text-[9px] tracking-[0.3em] uppercase flex items-center gap-2">
+              <Sparkles className="w-3 h-3" /> Rizwan Ashfaq Web Developer <Sparkles className="w-3 h-3" />
+            </p>
           </div>
         </div>
       </footer>
@@ -224,3 +200,4 @@ const Chat = () => {
 };
 
 export default Chat;
+      

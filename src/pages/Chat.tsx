@@ -1,203 +1,138 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+/**
+ * PROJECT: STUDY GUARD (ELITE VERSION 5.0)
+ * FIXES: MOBILE VIEW, VOICE STABILITY, & SECURITY REINFORCEMENT
+ */
+
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
-import { Send, Mic, MicOff, Share2, Sparkles, ChevronLeft, Clock, Play, Pause } from "lucide-react";
+import { 
+  Send, Mic, MicOff, Volume2, Share2, Shield, 
+  Clock, BrainCircuit, Activity 
+} from "lucide-react";
 
-// Types
-type Message = { role: "user" | "assistant"; content: string };
+// Project Component Imports (Assuming these exist in your project)
+import AppHeader from "@/components/AppHeader";
+import AppSidebar from "@/components/AppSidebar";
+import FocusOverlay from "@/components/FocusOverlay";
+import PinDialog from "@/components/PinDialog";
+import BrandingFooter from "@/components/BrandingFooter";
+import { useStudyMonitor } from "@/hooks/useStudyMonitor";
+import { useStudyLock, isStudyActive } from "@/hooks/useStudyLock";
+import { useFocusOverlay } from "@/hooks/useFocusOverlay";
 
 const GROQ_API_KEY = "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";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 const Chat = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [studyActive, setStudyActive] = useState(isStudyActive());
+  const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [isAudioOn, setIsAudioOn] = useState(true);
-  
-  // Timer State
-  const [timeLeft, setTimeLeft] = useState(0);
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
-  const timerInterval = useRef<NodeJS.Timeout | null>(null);
-
+  const [remainingTime, setRemainingTime] = useState("");
+  const [showPin, setShowPin] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  
+  useStudyLock();
+  const { showOverlay, triggerOverlay } = useFocusOverlay();
 
-  // --- TIMER FUNCTIONALITY ---
-  const startTimer = (minutes: number) => {
-    if (timerInterval.current) clearInterval(timerInterval.current);
-    setTimeLeft(minutes * 60);
-    setIsTimerRunning(true);
-  };
-
+  // --- TIMER ENGINE ---
   useEffect(() => {
-    if (isTimerRunning && timeLeft > 0) {
-      timerInterval.current = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
-      }, 1000);
-    } else if (timeLeft === 0) {
-      setIsTimerRunning(false);
-      if (timerInterval.current) clearInterval(timerInterval.current);
-      if (timeLeft === 0 && isTimerRunning) toast.success("Study Session Finished!");
-    }
-    return () => { if (timerInterval.current) clearInterval(timerInterval.current); };
-  }, [isTimerRunning, timeLeft]);
+    const tick = setInterval(() => {
+      const endStr = localStorage.getItem("edu_study_session_end");
+      if (!endStr) { setRemainingTime(""); return; }
+      
+      const diff = Number(endStr) - Date.now();
+      if (diff <= 0) {
+        setStudyActive(false);
+        setRemainingTime("");
+        localStorage.removeItem("edu_study_session_end");
+        return;
+      }
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setRemainingTime(`${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
+    }, 1000);
+    return () => clearInterval(tick);
+  }, []);
 
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  // --- IMPROVED VOICE CLEANER ---
+  const speakText = (text: string) => {
+    window.speechSynthesis.cancel();
+    const clean = text.replace(/[#*`_~\[\]()]/g, "").substring(0, 500);
+    const ut = new SpeechSynthesisUtterance(clean);
+    ut.rate = 1.0;
+    window.speechSynthesis.speak(ut);
   };
 
-  // --- VOICE ENGINE ---
-  const speak = useCallback((text: string) => {
-    if (!isAudioOn) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text.replace(/[#*`_~]/g, ""));
-    utterance.rate = 1;
-    window.speechSynthesis.speak(utterance);
-  }, [isAudioOn]);
-
-  // --- AI LOGIC (FIXED CONNECTION) ---
-  const handleSend = async () => {
-    const query = input.trim();
-    if (!query || isLoading) return;
-
-    const userMsg: Message = { role: "user", content: query };
-    setMessages(prev => [...prev, userMsg]);
+  // --- CORE AI UPLINK ---
+  const sendMessage = async () => {
+    if (!input.trim() || isLoading) return;
+    const userMsg = { role: "user", content: input.trim() };
+    setMessages(p => [...p, userMsg]);
     setInput("");
     setIsLoading(true);
 
     try {
-      const response = await fetch(GROQ_URL, {
+      const res = await fetch(GROQ_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${GROQ_API_KEY}`
-        },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${GROQ_API_KEY}` },
         body: JSON.stringify({
           model: "llama-3.3-70b-versatile",
-          messages: [{ role: "system", content: "You are Study Guard AI. Helpful and professional." }, ...messages, userMsg],
+          messages: [{ role: "system", content: "You are the Study Guard AI. Concise and educational." }, ...messages, userMsg],
         })
       });
-
-      if (!response.ok) throw new Error("API Connection Error");
-      
-      const data = await response.json();
+      const data = await res.json();
       const aiContent = data.choices[0].message.content;
-      
-      setMessages(prev => [...prev, { role: "assistant", content: aiContent }]);
-      speak(aiContent);
-    } catch (error) {
-      toast.error("System connection failed. Check Internet/API Key.");
-      console.error(error);
-    } finally {
-      setIsLoading(false);
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-    }
+      setMessages(p => [...p, { role: "assistant", content: aiContent }]);
+      speakText(aiContent);
+    } catch (e) { toast.error("Guardian Offline."); }
+    finally { setIsLoading(false); }
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#0b041a] text-white overflow-hidden relative">
-      
-      {/* Header */}
-      <header className="p-4 flex items-center justify-between border-b border-white/10 backdrop-blur-md z-50">
-        <div className="flex items-center gap-2">
-          <ChevronLeft className="w-5 h-5 text-purple-400" />
-          <h1 className="text-xs font-bold uppercase tracking-widest text-purple-300">Study Guard Supreme</h1>
-        </div>
-        {isTimerRunning && (
-          <div className="bg-purple-600/20 px-3 py-1 rounded-full border border-purple-500/50 flex items-center gap-2">
-            <Clock className="w-3 h-3 text-purple-400" />
-            <span className="text-[10px] font-mono">{formatTime(timeLeft)}</span>
-          </div>
-        )}
-      </header>
+    <div className="min-h-[100dvh] flex flex-col bg-slate-50 dark:bg-[#0f172a] text-slate-900 dark:text-white overflow-hidden">
+      <FocusOverlay show={showOverlay} />
+      <PinDialog open={showPin} onSuccess={() => setStudyActive(false)} onCancel={() => setShowPin(false)} />
+      <AppHeader onMenuClick={() => setSidebarOpen(true)} title="Elite Study Guard" />
+      <AppSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {/* Main Container */}
-      <main className="flex-1 overflow-y-auto px-5 py-6 no-scrollbar">
-        {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center min-h-[70vh] text-center">
-            
-            {/* BRAIN LOGO (FIXED) */}
-            <div className="w-40 h-40 mb-8 relative">
-              <div className="absolute inset-0 bg-purple-600 blur-[60px] opacity-20" />
-              <div className="relative w-full h-full rounded-full border-2 border-purple-500/30 p-4 bg-[#1a0b2e] flex items-center justify-center shadow-2xl">
-                <img 
-                  src="https://cdn-icons-png.flaticon.com/512/2103/2103633.png" 
-                  alt="Brain AI"
-                  className="w-24 h-24 object-contain brightness-110"
-                />
-              </div>
+      <main className="flex-1 overflow-y-auto px-4 py-6 no-scrollbar">
+        <div className="max-w-3xl mx-auto">
+          {studyActive && remainingTime && (
+            <div className="mb-8 p-6 rounded-3xl bg-white dark:bg-slate-800 border border-purple-500/20 shadow-xl text-center">
+              <div className="text-[10px] font-black uppercase tracking-widest text-purple-500 mb-1">Active Focus Session</div>
+              <div className="text-4xl font-black font-mono text-slate-800 dark:text-white">{remainingTime}</div>
             </div>
+          )}
 
-            <h2 className="text-4xl font-black mb-2">Hello, <span className="text-purple-400">Student</span></h2>
-            <p className="text-gray-400 text-sm max-w-[250px] mx-auto mb-8">Ask me anything about your syllabus and set your study focus.</p>
-
-            {/* QUICK ACTIONS & TIMER (FIXED) */}
-            <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
-              <button onClick={() => startTimer(25)} className="bg-white/5 border border-white/10 py-3 rounded-2xl flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-tighter hover:bg-purple-600 transition-all">
-                <Play className="w-3 h-3" /> 25m Focus
-              </button>
-              <button onClick={() => setIsAudioOn(!isAudioOn)} className={`border py-3 rounded-2xl flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-tighter transition-all ${isAudioOn ? 'bg-purple-600 border-purple-400' : 'bg-white/5 border-white/10'}`}>
-                {isAudioOn ? 'Audio ON' : 'Audio OFF'}
-              </button>
-            </div>
-          </div>
-        ) : (
           <div className="space-y-6 pb-32">
-            {messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`p-4 rounded-2xl max-w-[85%] text-sm font-medium leading-relaxed shadow-lg ${
-                  msg.role === 'user' ? 'bg-purple-600 border border-purple-400' : 'bg-white/5 border border-white/10 backdrop-blur-md'
-                }`}>
-                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+            {messages.map((m, i) => (
+              <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`p-4 rounded-2xl max-w-[85%] text-sm shadow-sm ${m.role === 'user' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'}`}>
+                  <ReactMarkdown>{m.content}</ReactMarkdown>
                 </div>
-              </div>
+              </motion.div>
             ))}
             <div ref={bottomRef} />
           </div>
-        )}
+        </div>
       </main>
 
-      {/* Input Section (Fixed Full Screen & Buttons) */}
-      <footer className="p-6 bg-gradient-to-t from-[#0b041a] to-transparent">
-        <div className="max-w-2xl mx-auto">
-          <div className="relative flex items-center bg-white/5 border border-white/10 rounded-[2rem] p-1.5 backdrop-blur-2xl shadow-2xl">
-            <button 
-              onClick={() => setIsListening(!isListening)}
-              className={`p-4 rounded-full transition-all ${isListening ? 'bg-red-500 animate-pulse' : 'bg-purple-600'}`}
-            >
-              {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-            </button>
-            
-            <input 
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="Search your syllabus..." 
-              className="flex-1 bg-transparent border-none outline-none text-white px-3 text-sm font-semibold"
-            />
-
-            <button 
-              onClick={handleSend}
-              className="p-4 rounded-full bg-blue-600 shadow-lg shadow-blue-900/40"
-            >
-              {isLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send className="w-5 h-5 rotate-45" />}
-            </button>
-          </div>
-
-          <div className="flex justify-center mt-4">
-            <p className="text-yellow-500 font-black text-[9px] tracking-[0.3em] uppercase flex items-center gap-2">
-              <Sparkles className="w-3 h-3" /> Rizwan Ashfaq Web Developer <Sparkles className="w-3 h-3" />
-            </p>
-          </div>
+      <footer className="p-4 bg-transparent backdrop-blur-sm">
+        <div className="max-w-3xl mx-auto flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-[2rem] p-2 shadow-2xl">
+          <button onClick={() => setIsListening(!isListening)} className={`p-3 rounded-full ${isListening ? 'bg-red-500 animate-pulse' : 'text-slate-400'}`}><Mic className="w-5 h-5" /></button>
+          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()} placeholder="Ask your Guardian..." className="flex-1 bg-transparent border-none outline-none px-3 text-sm" />
+          <button onClick={sendMessage} className="p-3 bg-purple-600 text-white rounded-full"><Send className="w-5 h-5" /></button>
         </div>
+        <BrandingFooter />
       </footer>
     </div>
   );
 };
 
 export default Chat;
-      
+  
